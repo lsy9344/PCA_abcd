@@ -1,0 +1,197 @@
+---
+description: Common problems and solutions for store testing
+globs: 
+alwaysApply: false
+---
+# 매장 테스트 공통 문제 분석 및 해결책 - 같은 실수 방지 지침
+
+## 🚨 핵심 문제 요약
+
+### 1️⃣ **아키텍처 불일치 문제**
+- **문제**: CLI 실행 경로와 서버 실행 경로가 서로 다른 클래스를 사용
+- **원인**: `interfaces/cli/main.py`는 `StoreCrawler` 직접 사용, 서버는 `Store` → `StoreCrawler` 경로 사용
+- **해결**: 모든 실행 경로가 동일한 인터페이스를 사용하도록 통일
+
+### 2️⃣ **메서드 시그니처 불일치**
+- **문제**: `Store.login(page)` vs `StoreCrawler.login()` 파라미터 차이
+- **원인**: 레거시 코드와 신규 코드 간의 인터페이스 불일치
+- **해결**: 모든 메서드 시그니처를 일관성 있게 설계
+
+### 3️⃣ **필수 메서드 누락**
+- **문제**: `StoreCrawler`에 `cleanup` 메서드 없음
+- **원인**: 새로운 클래스 작성 시 기존 인터페이스 준수 미흡
+- **해결**: 추상 클래스나 인터페이스 기반 개발
+
+### 4️⃣ **데이터 구조 불일치**
+- **문제**: A 매장: `{'coupon': {'car': count, 'total': count}}` vs 다른 매장: `{'coupon': count}`
+- **원인**: 매장별로 다른 데이터 구조 사용
+- **해결**: 공통 데이터 구조 정의 및 준수
+
+---
+
+## 📋 **필수 체크리스트 - 새 매장 추가/수정 시**
+
+### ✅ **인터페이스 일관성 체크**
+```bash
+# 새 매장 클래스 작성 시 반드시 확인
+□ BaseStore 추상 클래스의 모든 메서드 구현했는가?
+□ 메서드 시그니처가 기존 매장과 일치하는가?
+□ cleanup 메서드가 구현되어 있는가?
+□ StoreRepository 인터페이스를 준수하는가?
+```
+
+### ✅ **데이터 구조 일관성 체크**
+```python
+# discount_info 구조는 항상 이 형태여야 함 (A 매장 기준)
+discount_info = {
+    'COUPON_NAME': {'car': count, 'total': count}
+}
+
+# ❌ 절대 이렇게 하지 말 것
+discount_info = {
+    'COUPON_NAME': count  # int 형태 금지
+}
+```
+
+### ✅ **실행 경로 테스트**
+```bash
+# 새 매장 구현 후 반드시 두 경로 모두 테스트
+□ CLI 경로 테스트: python interfaces/cli/main.py --store X --vehicle 1234
+□ 서버 경로 테스트: 서버 시작 후 웹훅 호출 테스트
+□ 두 경로의 결과가 동일한가?
+```
+
+---
+
+## 🔧 **개발 시 필수 준수사항**
+
+### **1. 새 매장 클래스 작성 시**
+```python
+# ✅ 올바른 방법
+class NewStoreCrawler(StoreRepository):
+    def __init__(self, store_config, playwright_config, logger):
+        # 필수 초기화
+        
+    async def login(self) -> bool:
+        # page 파라미터 없이 self.page 사용
+        
+    async def search_vehicle(self, vehicle: Vehicle) -> bool:
+        # Vehicle 객체 파라미터 사용
+        
+    async def get_coupon_history(self, vehicle: Vehicle) -> CouponHistory:
+        # 반드시 CouponHistory 객체 반환
+        
+    async def apply_coupons(self, applications: List[CouponApplication]) -> bool:
+        # List[CouponApplication] 파라미터 사용
+        
+    async def cleanup(self) -> None:
+        # 필수 구현 - 리소스 정리
+```
+
+### **2. 데이터 구조 통일**
+```python
+# ✅ 모든 매장에서 사용해야 하는 공통 구조 (A 매장 기준)
+def _parse_discount_info(self, discount_data: any, discount_info: Dict[str, Dict[str, int]]):
+    # A 매장과 동일한 구조로 반드시 설정
+    discount_info['COUPON_NAME'] = {'car': count, 'total': count}
+```
+
+### **3. 매장별 설정 파일 관리**
+```python
+# ✅ config.py에서 매장별 설정 분리 관리
+STORE_CONFIGS = {
+    'A': {
+        'login_url': 'https://store-a.com/login',
+        'coupons': {...}
+    },
+    'B': {
+        'login_url': 'https://store-b.com/login', 
+        'coupons': {...}
+    }
+}
+
+# ❌ 하드코딩 금지
+# login_url = "https://hardcoded-url.com"
+```
+
+---
+
+## 🧪 **테스트 시 필수 절차**
+
+### **1. 코드 수정 후 테스트 절차**
+```bash
+# 순서가 중요합니다!
+1. ✅ 코드 수정 완료
+2. ✅ 기존 서버 프로세스 종료
+3. ✅ 새 서버 시작
+4. ✅ 테스트 실행
+5. ✅ 결과 확인
+```
+
+### **2. 양방향 테스트 필수**
+```bash
+# CLI 테스트
+python interfaces/cli/main.py --store [매장ID] --vehicle [차량번호]
+
+# 서버 테스트 (서버 재시작 후)
+웹훅 호출 테스트
+```
+
+### **3. 테스트 결과 검증**
+```bash
+# 성공 조건 (모든 매장 공통)
+□ CLI: 정상 완료 (cleanup 포함)
+□ 서버: {"success": true, "statusCode": 200}
+□ 로그: Unicode 에러 없음
+□ 브라우저: 정상 종료 확인
+□ 데이터 구조: A 매장과 동일한 형태
+```
+
+---
+
+## 🚫 **절대 하지 말아야 할 것들**
+
+### **❌ 인터페이스 무시**
+- BaseStore나 StoreRepository 메서드 시그니처 임의 변경
+- 필수 메서드(`cleanup`, `login`, `get_coupon_history` 등) 누락
+
+### **❌ 데이터 구조 불일치**
+- 매장별로 다른 discount_info 구조 사용
+- A 매장: `{'car': count, 'total': count}` vs 다른 매장: `count`
+
+### **❌ 테스트 부족**
+- CLI 경로만 테스트하고 서버 경로 생략
+- 코드 수정 후 서버 재시작 없이 테스트
+
+### **❌ 하드코딩**
+- 매장별 설정을 코드에 직접 입력
+- config 파일 사용 무시
+
+---
+
+## 🎯 **성공 기준**
+
+### **✅ 완전한 성공 조건**
+```bash
+1. CLI 테스트 성공: python interfaces/cli/main.py --store [매장] --vehicle [차량번호]
+2. 서버 테스트 성공: {"success": true, "statusCode": 200}
+3. 브라우저 화면 표시: headless=false로 동작 확인
+4. 리소스 정리 완료: cleanup 메서드 정상 실행
+5. 로그 에러 없음: Unicode 에러 등 없음
+6. 데이터 구조 일치: A 매장과 동일한 구조 사용
+```
+
+---
+
+## 📚 **참고사항**
+
+- **A 매장은 100% 검증완료**: A 매장 관련 코드는 수정하지 말고 참조용으로만 사용
+- **공통 코드 수정 시**: 모든 매장에 영향을 주므로 신중하게 처리
+- **환경 설정**: `config/environment.local`에서 설정 관리
+- **로그 관리**: CloudWatch 비용 절감을 위해 간결한 로그 메시지 사용
+- **매장 추가 순서**: A 매장 구조 분석 → 인터페이스 정의 → 새 매장 구현 → 양방향 테스트
+
+---
+
+이 지침을 항상 참고하여 모든 매장에서 동일한 문제가 재발하지 않도록 주의하세요!
+

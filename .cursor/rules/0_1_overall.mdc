@@ -1,0 +1,25 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# [0] 전체 시스템 구조
+
+## 🎯 목적
+- 여러 매장(A, B, C...)의 주차 쿠폰을 자동으로 처리하는 시스템을 구축한다.
+- 각 매장은 서로 다른 Google Form, 사이트 구조, ID, Password, 쿠폰 이름을 갖는다.
+- AWS Lambda와 Google Apps Script를 활용하여 자동화된다.
+
+## 🔁 흐름 요약
+1. 매장별 Google Form 제출
+2. 각 Google Apps Script가 해당 Lambda 호출
+3. Lambda는 `main.py(store_id, car_number)` 호출
+4. `store_router.py`에서 store_id에 따라 맞는 클래스 실행
+5. 해당 매장 전용 Playwright 로직으로 로그인, 검색, 쿠폰 적용 수행
+6. 성공/실패는 로그로 저장, 실패는 텔레그램으로 전송
+
+## 📦 확장 구조 요약
+- `stores/` → 매장별 자동화 클래스
+- `discount_rules/` → 매장별 쿠폰 규칙 매핑
+- `lambda_handlers/` → 매장별 Lambda 진입점
+- `utils/`, `config/` → 공통 로직 및 설정

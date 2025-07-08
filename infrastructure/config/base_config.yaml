@@ -1,0 +1,33 @@
+# 기본 설정 파일 (참고 코드 기반)
+playwright:
+  headless: true
+  timeout: 30000
+  retry_count: 2
+
+telegram:
+  bot_token: "7694000458:AAFDa7szcGRjJJUy8cU_eJnU9MPgqsWnkmk"
+  chat_id: "6968094848"
+  max_retries: 3
+  retry_delay: 1.0
+
+logging:
+  level: "INFO"
+
+# A 매장 전용 설정 (참고 코드와 동일)
+store_configs:
+  A:
+    website_url: "http://members.iparking.co.kr/#!"
+    login:
+      username: "dtctrit2704"
+      password: "dtctrit2704"
+    discount_types:
+      FREE_1HOUR: "30분할인권(무료)"
+      PAID_1HOUR: "1시간할인권(유료)"
+      WEEKEND_1HOUR: "1시간주말할인권(유료)"
+    max_weekday_coupons: 3
+    max_weekend_coupons: 2
+
+# 공통 할인 정책
+common_discount_policy:
+  weekday_target_hours: 3
+  weekend_target_hours: 2 

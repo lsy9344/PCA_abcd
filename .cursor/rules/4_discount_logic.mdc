@@ -1,0 +1,213 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# 4. 비즈니스 로직 – 할인권(쿠폰) 적용 규칙
+
+이 문서는 "사이트(매장)마다 다른 쿠폰 코드/이름" 문제를  
+현실적으로 반영해서,  
+쿠폰명/코드명을 모두 "공통 설정"에서 불러와 사용하는  
+# 4. 비즈니스 로직 – 할인권(쿠폰) 적용 규칙
+
+이 문서는 "사이트(매장)마다 다른 쿠폰 코드/이름" 문제를  
+현실적으로 반영해서,  
+쿠폰명/코드명을 모두 "공통 설정"에서 불러와 사용하는  
+설계/코딩 원칙을 안내합니다.
+
+---
+
+## [쿠폰 종류 관리 – 공통 설정 구조 예시]
+
+> **쿠폰 종류, 쿠폰명(코드명)은 반드시 매장(사이트)별 공통 설정 파일에 관리한다!**
+
+### 예시: Python 설정 파일 (config.py)
+
+```python
+# config.py (혹은 각 매장별 yaml/json 등)
+
+# 매장별로 값만 다르게 관리, 비즈니스 로직에는 key만 사용
+
+---
+
+예시: 매장/사이트별 분기
+STORE_CONFIGS = {
+    "A": {
+        "WEBSITE_URL": "...",
+        "DISCOUNT_TYPES": {
+            "무료1시간쿠폰": "30분할인권(무료)",
+            "평일1시간쿠폰": "1시간할인권(유료)",
+            "주말1시간쿠폰": "1시간주말할인권(유료)"
+        },
+        # 기타 설정...
+    },
+    "B": {
+        "WEBSITE_URL": "...",
+        "DISCOUNT_TYPES": {
+            "FREE_1HOUR": "1시간할인권(무료)",
+            "PAID_1HOUR": "1시간할인권(유료)",
+            "WEEKEND_1HOUR": "1시간주말할인권(유료)"  # B 매장은 주말 전용 쿠폰 없음
+        },
+    },
+    # ...
+}
+실제 비즈니스 로직에서는 DISCOUNT_TYPES의 key만 참조
+ex) DISCOUNT_TYPES["FREE_1HOUR"]
+
+코드/로직에서는 이름이 바뀌어도 동작 보장
+
+---
+
+[할인권 적용 로직 – key 중심 알고리즘]
+1. 평일(월~금, 공휴일 제외)
+총 3시간의 쿠폰 필요
+
+무료 쿠폰(FREE_1HOUR) 1회 (단, 이미 전체 이력에 있으면 유료로 대체)
+
+나머지 2시간은 유료 평일 쿠폰(PAID_1HOUR)
+
+2. 주말/공휴일(토·일·공휴일)
+총 2시간의 쿠폰 필요
+
+무료 쿠폰(FREE_1HOUR) 1회 (단, 이미 전체 이력에 있으면 유료로 대체)
+
+나머지 1시간은 유료 주말 쿠폰(WEEKEND_1HOUR) 
+**📌 중요: 주말 전용 쿠폰이 없으면 평일 쿠폰(PAID_1HOUR) 사용**
+
+3. **주말 쿠폰 fallback 규칙** (A, B 매장 공통)
+- 주말에 WEEKEND 타입 쿠폰이 있으면 해당 쿠폰 사용
+- 주말에 WEEKEND 타입 쿠폰이 없으면 PAID 타입 쿠폰으로 대체
+- 이는 B 매장과 같이 주말 전용 쿠폰이 없는 매장에 필수
+
+[로직 구현(실전 예시, 쿠폰명 분리)]
+def decide_coupon_to_apply(my_history, total_history, discount_types, is_weekday):
+    """
+    my_history: 매장별 할인권 사용 이력 (쿠폰명→사용횟수 dict)
+    total_history: 전체 무료 쿠폰 사용 이력 (쿠폰명→사용횟수 dict)
+    discount_types: {'FREE_1HOUR': str, 'PAID_1HOUR': str, 'WEEKEND_1HOUR': str}
+    is_weekday: 평일(True)/주말(False)
+    """
+    free_key = discount_types['FREE_1HOUR']
+    paid_key = discount_types['PAID_1HOUR']
+    weekend_key = discount_types.get('WEEKEND_1HOUR', paid_key)  # fallback to PAID
+
+    total_free_used = total_history.get(free_key, 0)
+    my_free = my_history.get(free_key, 0)
+    my_paid = my_history.get(paid_key, 0)
+    my_weekend = my_history.get(weekend_key, 0)
+
+    if is_weekday:
+        total_needed = 3
+        free_apply = 0 if total_free_used > 0 else max(0, 1 - my_free)
+        paid_apply = total_needed - (my_paid + free_apply)
+        return {
+            free_key: free_apply,
+            paid_key: max(0, paid_apply),
+            weekend_key: 0
+        }
+    else:
+        total_needed = 2
+        free_apply = 0 if total_free_used > 0 else max(0, 1 - my_free)
+        # 주말에는 weekend_key 사용 (WEEKEND 없으면 PAID로 fallback)
+        weekend_apply = total_needed - (my_weekend + free_apply)
+        return {
+            free_key: free_apply,
+            paid_key: 0 if weekend_key != paid_key else max(0, weekend_apply),
+            weekend_key: max(0, weekend_apply) if weekend_key != paid_key else 0
+        }
+
+---
+
+[실제 적용 결과 예시 – 각 매장별로 다르게 적용 가능]
+매장 A: "무료1시간쿠폰", "평일1시간쿠폰", "주말1시간쿠폰"
+
+매장 B: "1시간할인권(무료)", "1시간할인권(유료)" (주말도 유료 쿠폰 사용)
+
+→ 비즈니스 로직은 오직 key(예: FREE_1HOUR)만 사용 →
+각 매장에서는 실제 이름만 바꿔서 관리!
+
+[최종 적용 결과 출력 포맷(예시)]
+"무료1시간쿠폰: 1개 / 평일1시간쿠폰: 2개 / 주말1시간쿠폰: 0개"
+
+"1시간할인권(무료): 1개 / 1시간할인권(유료): 2개 / 1시간주말할인권(유료): 0개"
+
+[정리/주의]
+쿠폰명/코드명은 반드시 config에서 불러와야 함
+
+코드/문서/비즈니스로직에는 key만 사용
+
+매장마다 다르게 바뀌어도 로직이 깨지지 않음
+
+파싱/출력/적용 모두 config 기반으로 동작
+
+**📌 주말 쿠폰 fallback: WEEKEND 없으면 PAID 사용 (모든 매장 공통)**
+
+# 4. 할인권 적용 규칙 상세 로직
+
+## 1. 기본 원칙
+
+1.  **매장별 독립성**: 각 매장(`AStore`, `BStore` 등)은 자신만의 할인 규칙(`ADiscountRule`, `BDiscountRule`)을 가진다.
+2.  **규칙 상속**: 모든 할인 규칙 클래스는 `BaseDiscountRule`을 상속받아 기본 구조(평일/주말 구분 등)를 공유하되, 세부 로직은 각자 구현한다.
+3.  **쿠폰 종류의 가변성**:
+    -   매장마다 사용하는 쿠폰의 **종류와 명칭이 다르다.**
+    -   예: A 매장은 '1시간 무료', '30분 유료' / B 매장은 '1시간 유료', '주말 1시간'
+    -   이는 `config.py`의 `STORE_CONFIGS`에 매장별로 명확히 정의되어야 한다.
+4.  **사이트별 크롤링 차이**:
+    -   '현재 보유 쿠폰', '우리 매장 적용 쿠폰', '전체 적용 쿠폰' 정보를 가져오는 웹 페이지의 **구조(HTML Selector)는 매장마다 다르다.**
+    -   따라서, 이 정보를 크롤링하는 로직은 각 매장의 `get_coupon_history` 메서드 내에서 개별적으로 구현되어야 한다.
+
+## 2. 쿠폰 적용 조건 (BaseDiscountRule의 역할)
+
+-   **공통 적용 조건**: 모든 매장에서 공통적으로 적용되는 기본 조건은 `BaseDiscountRule`에 정의된다.
+    -   평일: **총 3시간** 할인을 목표로 쿠폰을 조합한다.
+    -   주말/공휴일: **총 2시간** 할인을 목표로 쿠폰을 조합한다.
+    -   **무료 쿠폰 우선**: 타 매장에서 무료 쿠폰을 이미 사용했다면, 우리 매장에서는 적용하지 않는다. (`total_history` 기준)
+    -   **주말 쿠폰 fallback**: 주말에 WEEKEND 타입 쿠폰이 없으면 PAID 타입 쿠폰을 사용한다.
+
+## 3. 매장별 쿠폰 적용 로직 (각 매장 DiscountRule의 역할)
+
+-   `decide_coupon_to_apply` 메서드는 `BaseDiscountRule`로부터 상속받아 각 매장의 특성에 맞게 **오버라이딩(재정의)** 되어야 한다.
+
+### 3.1. A 매장 로직 예시 (`ADiscountRule`)
+
+-   **사용 쿠폰**: '1시간 무료 쿠폰', '1시간 유료 쿠폰', '1시간 주말 쿠폰'
+-   **적용 규칙**:
+    -   **평일 (3시간)**:
+        1.  `무료 1시간` 1개 적용 (단, 전체 매장에서 사용 이력 없을 시)
+        2.  부족한 시간(2시간)은 `유료 1시간` 2개로 채운다.
+    -   **주말 (2시간)**:
+        1.  `무료 1시간` 1개 적용 (단, 전체 매장에서 사용 이력 없을 시)
+        2.  부족한 시간(1시간)은 `주말 1시간` 1개로 채운다.
+-   **특수 조건**: A 매장은 하루에 적용 가능한 총 쿠폰 개수에 제한이 있다. (`MAX_WEEKDAY_COUPONS`, `MAX_WEEKEND_COUPONS`)
+    -   기본 규칙으로 계산된 쿠폰 수가 이 제한을 초과할 경우, `ADiscountRule`에서 개수를 조정한다.
+
+### 3.2. B 매장 로직 예시 (`BDiscountRule`)
+
+-   **사용 쿠폰**: '무료 1시간할인', '유료 30분할인' (주말 전용 쿠폰 없음)
+-   **적용 규칙**:
+    -   **평일 (3시간)**:
+        1.  `무료 1시간` 1개 적용 (단, 전체 매장에서 사용 이력 없을 시)
+        2.  부족한 시간(2시간)은 `유료 30분할인` 4개로 채운다. (30분×4 = 2시간)
+    -   **주말 (2시간)**:
+        1.  `무료 1시간` 1개 적용 (단, 전체 매장에서 사용 이력 없을 시)
+        2.  부족한 시간(1시간)은 `유료 30분할인` 2개로 채운다. (30분×2 = 1시간)
+        3.  **🔥 중요**: B 매장은 주말 전용 쿠폰이 없으므로 평일 쿠폰(PAID)를 사용
+-   **특수 조건**: 
+    -   B 매장의 유료 쿠폰은 30분 단위이므로 시간 계산 시 2배 보정 필요
+    -   무료 쿠폰은 항상 보유되어 있음 (크롤링에서 999개로 설정)
+    -   주말에도 평일 쿠폰(PAID 타입)을 사용하므로 fallback 로직 적용
+
+## 4. 로직 실행 흐름
+
+1.  **`AStore.run()` 실행**: 자동화 시작
+2.  `AStore.get_coupon_history()` 호출:
+    -   A 매장 사이트의 HTML 구조에 맞춰 **보유/우리매장/전체 쿠폰 이력**을 크롤링하여 반환한다.
+3.  `ADiscountRule.decide_coupon_to_apply()` 호출:
+    -   `get_coupon_history`에서 받은 이력과 `config.py`의 쿠폰 설정을 바탕으로 **A 매장 규칙에 따라** 적용할 쿠폰과 개수를 결정한다.
+4.  `AStore.apply_coupons()` 호출:
+    -   결정된 쿠폰을 웹사이트에서 실제로 적용한다.
+
+---
+
+이 문서는 매장 추가 및 로직 변경 시 **가장 먼저 검토하고 업데이트**해야 하는 핵심 설계 문서이다.
+

@@ -1,0 +1,76 @@
+# A매장 설정
+store:
+  id: "A"
+  name: "동탄점"
+  website_url: "http://members.iparking.co.kr/#!"
+  
+login:
+  username: "dtctrit2704"
+  password: "dtctrit2704"
+
+# 쿠폰 타입 매핑
+coupons:
+  FREE_1HOUR:
+    name: "30분할인권(무료)"
+    type: "free"
+    duration_minutes: 60
+    priority: 0
+  PAID_1HOUR:
+    name: "1시간할인권(유료)"
+    type: "paid"
+    duration_minutes: 60
+    priority: 1
+  WEEKEND_1HOUR:
+    name: "1시간주말할인권(유료)"
+    type: "weekend"
+    duration_minutes: 60
+    priority: 2
+
+# 할인 정책
+discount_policy:
+  weekday:
+    target_hours: 3
+    max_coupons: 3
+  weekend:
+    target_hours: 2
+    max_coupons: 2
+
+# 웹 셀렉터
+selectors:
+  # 로그인 관련
+  login:
+    username_input: "#id"
+    password_input: "#password"
+    login_button: "#login"
+    car_number_input: "#carNumber"
+  
+  # 팝업 처리
+  popups:
+    intro_skip: "#skip"
+    notice_cancel: "#popupCancel"
+    after_login_home: "#gohome"
+    after_login_start: "#start"
+    popup_ok: "#popupOk"
+  
+  # 차량 검색
+  search:
+    car_number_input: "#carNumber"
+    search_button: 'button[name="search"]'
+    search_button_alt1: ".btn-search"
+    search_button_alt2: 'button:has-text("검색")'
+    next_button: "#next"
+    next_button_alt: 'button:has-text("차량 선택")'
+    park_name: "#parkName"
+    no_result_text: 'text="검색된 차량이 없습니다"'
+  
+  # 쿠폰 관련
+  coupons:
+    product_list: "#productList"
+    product_rows: "#productList tr"
+    empty_message: "#productList td.empty"
+    my_dc_list: "#myDcList"
+    my_dc_rows: "#myDcList tr"
+    all_dc_list: "#allDcList"
+    all_dc_rows: "#allDcList tr"
+    apply_button: 'button:has-text("적용")'
+    apply_button_prefix: "#apply_" 

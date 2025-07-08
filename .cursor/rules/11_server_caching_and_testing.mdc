@@ -1,0 +1,274 @@
+---
+description: Server Caching Issues and Test Environment Management Guidelines
+globs: 
+alwaysApply: false
+---
+# 서버 캐싱 문제 및 테스트 환경 관리 가이드라인
+
+## 🚨 **핵심 문제: Python 모듈 캐싱**
+
+### **문제 상황**
+- **코드 수정**: `cleanup` 메서드를 `StoreCrawler`에 추가
+- **서버 실행**: 이전에 시작된 서버가 계속 실행 중
+- **결과**: 새로운 코드가 반영되지 않아 `'StoreCrawler' object has no attribute 'cleanup'` 에러 지속
+
+### **원인 분석**
+```python
+# Python 모듈 import 과정
+1. 최초 import 시: 모듈이 메모리에 로드됨
+2. 이후 import 시: 캐시된 모듈 사용
+3. 파일 수정 후: 서버 재시작 전까지 이전 버전 사용
+```
+
+---
+
+## 🔧 **해결 방법**
+
+### **1. 필수 서버 재시작 절차**
+
+#### **Windows 환경**
+```bash
+# 1단계: 실행 중인 Python 프로세스 확인
+tasklist | findstr python
+
+# 2단계: 해당 프로세스 강제 종료
+taskkill /PID [프로세스ID] /F
+# 또는 모든 Python 프로세스 종료
+taskkill /F /IM python.exe
+
+# 3단계: 서버 재시작
+python local_lambda_server.py --host localhost --port 5000
+```
+
+#### **PowerShell 환경**
+```powershell
+# 프로세스 확인
+Get-Process python
+
+# 프로세스 종료
+Stop-Process -Name python -Force
+
+# 서버 재시작
+python local_lambda_server.py --host localhost --port 5000
+```
+
+### **2. 안전한 서버 관리**
+
+#### **서버 상태 확인**
+```bash
+# 포트 점유 확인
+netstat -an | findstr :5000
+
+# 정상 응답: LISTENING 상태
+TCP    0.0.0.0:5000           0.0.0.0:0              LISTENING
+```
+
+#### **서버 중복 실행 방지**
+```python
+# local_lambda_server.py에 추가할 코드
+import socket
+
+def check_port_available(host, port):
+    """포트 사용 가능 여부 확인"""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        try:
+            s.bind((host, port))
+            return True
+        except OSError:
+            return False
+
+# 서버 시작 전 확인
+if not check_port_available('localhost', 5000):
+    print("❌ 포트 5000이 이미 사용 중입니다. 기존 서버를 종료해주세요.")
+    sys.exit(1)
+```
+
+---
+
+## 🧪 **테스트 시 필수 절차**
+
+### **1. 코드 수정 후 테스트 절차**
+```bash
+# 순서가 중요합니다!
+1. ✅ 코드 수정 완료
+2. ✅ 기존 서버 프로세스 종료
+3. ✅ 새 서버 시작
+4. ✅ 테스트 실행
+5. ✅ 결과 확인
+```
+
+### **2. 양방향 테스트 필수**
+```bash
+# CLI 테스트
+python interfaces/cli/main.py --store [매장ID] --vehicle [차량번호]
+
+# 서버 테스트 (서버 재시작 후)
+Invoke-RestMethod -Uri "http://localhost:5000/webhook" -Method POST -Body '{"store_id": "[매장ID]", "vehicle_number": "[차량번호]"}' -ContentType "application/json"
+```
+
+### **3. 테스트 결과 검증**
+```bash
+# 성공 조건
+□ CLI: 정상 완료 (cleanup 포함)
+□ 서버: {"success": true, "statusCode": 200}
+□ 로그: UnicodeEncodeError 없음
+□ 브라우저: 정상 종료 확인
+```
+
+---
+
+## 🚫 **자주 하는 실수들**
+
+### **❌ 서버 재시작 없이 테스트**
+```bash
+# 잘못된 순서
+1. 코드 수정
+2. 바로 테스트 실행 ← 이전 코드로 실행됨
+3. 에러 발생
+4. 코드 재수정
+5. 또 바로 테스트 ← 여전히 이전 코드
+```
+
+### **❌ 프로세스 종료 확인 안함**
+```bash
+# 문제 상황
+taskkill /F /IM python.exe  # 명령 실행
+python local_lambda_server.py  # 바로 서버 시작
+# → 이전 프로세스가 완전히 종료되지 않았을 수 있음
+```
+
+### **❌ 포트 충돌 무시**
+```bash
+# Address already in use 에러 무시하고 계속 진행
+# → 이전 서버가 여전히 실행 중이므로 새 코드 반영 안됨
+```
+
+---
+
+## 🛡️ **안전한 개발 환경 설정**
+
+### **1. 자동 재시작 스크립트**
+```python
+# restart_server.py
+import subprocess
+import time
+import sys
+
+def restart_server():
+    """서버 안전 재시작"""
+    print("1. 기존 Python 프로세스 종료 중...")
+    subprocess.run(['taskkill', '/F', '/IM', 'python.exe'], 
+                   capture_output=True)
+    
+    print("2. 프로세스 종료 완료 대기...")
+    time.sleep(2)
+    
+    print("3. 서버 재시작...")
+    subprocess.run([sys.executable, 'local_lambda_server.py', 
+                   '--host', 'localhost', '--port', '5000'])
+
+if __name__ == "__main__":
+    restart_server()
+```
+
+### **2. 개발 환경 체크 스크립트**
+```python
+# check_dev_env.py
+import subprocess
+import socket
+
+def check_development_environment():
+    """개발 환경 상태 체크"""
+    
+    # 1. Python 프로세스 확인
+    result = subprocess.run(['tasklist', '/FI', 'IMAGENAME eq python.exe'], 
+                           capture_output=True, text=True)
+    python_count = result.stdout.count('python.exe')
+    print(f"실행 중인 Python 프로세스: {python_count}개")
+    
+    # 2. 포트 5000 확인
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        port_available = s.connect_ex(('localhost', 5000)) != 0
+    print(f"포트 5000 사용 가능: {port_available}")
+    
+    # 3. 권장사항
+    if python_count > 1:
+        print("⚠️ 여러 Python 프로세스가 실행 중입니다.")
+        print("   불필요한 프로세스를 종료하세요.")
+    
+    if not port_available:
+        print("ℹ️ 포트 5000이 사용 중입니다.")
+        print("   서버가 실행 중이거나 다른 앱이 포트를 사용 중입니다.")
+
+if __name__ == "__main__":
+    check_development_environment()
+```
+
+---
+
+## 📋 **테스트 체크리스트**
+
+### **코드 수정 후 필수 확인사항**
+```bash
+□ 기존 Python 프로세스 모두 종료했는가?
+□ 포트 5000이 해제되었는가?
+□ 새 서버가 정상 시작되었는가?
+□ CLI 테스트가 성공하는가?
+□ 서버 테스트가 성공하는가?
+□ 두 테스트의 결과가 일치하는가?
+```
+
+### **배포 전 최종 확인**
+```bash
+□ 모든 이모지가 텍스트로 변경되었는가?
+□ cleanup 메서드가 모든 매장에 구현되었는가?
+□ 데이터 구조가 일관성 있게 통일되었는가?
+□ Windows 환경에서 Unicode 에러 없는가?
+□ 서버 재시작 후에도 정상 동작하는가?
+```
+
+---
+
+## 🎯 **모범 사례**
+
+### **✅ 올바른 개발 플로우**
+```bash
+1. 코드 수정
+2. check_dev_env.py 실행 (환경 확인)
+3. restart_server.py 실행 (안전 재시작)
+4. CLI 테스트 실행
+5. 서버 테스트 실행
+6. 결과 비교 및 검증
+```
+
+### **✅ 문제 발생 시 대응**
+```bash
+1. 에러 로그 확인
+2. 서버 프로세스 완전 종료
+3. 코드 수정
+4. 환경 체크
+5. 서버 재시작
+6. 재테스트
+```
+
+---
+
+## 💡 **추가 팁**
+
+### **IDE 설정**
+- **VS Code/Cursor**: 터미널에서 `Ctrl+C`로 서버 종료 후 재시작
+- **파일 변경 감지**: 자동 재시작 도구 사용 고려 (개발 시에만)
+
+### **로깅 활용**
+```python
+# 서버 시작 시 버전 정보 로그
+import time
+startup_time = time.strftime("%Y-%m-%d %H:%M:%S")
+logger.info(f"서버 시작 시간: {startup_time}")
+logger.info(f"코드 버전: {git_commit_hash}")  # Git 커밋 해시
+```
+
+---
+
+**이 가이드라인을 준수하여 안정적인 개발 및 테스트 환경을 유지하세요!**
+

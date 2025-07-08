@@ -1,0 +1,39 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+project_root/
+├── core/                           # 핵심 도메인 로직 (클린 아키텍처의 중심)
+│   ├── domain/                     # 도메인 계층
+│   │   ├── models/                 # 도메인 모델 (예: coupon.py, store.py, vehicle.py, discount_policy.py)
+│   │   └── repositories/           # 리포지토리 인터페이스 (예: store_repository.py)
+│   └── application/                # 애플리케이션 계층
+│       ├── use_cases/              # 유스케이스 (예: apply_coupon_use_case.py)
+│       └── dto/                    # 데이터 전송 객체 (예: automation_dto.py)
+├── infrastructure/                 # 인프라스트럭처 계층 (외부 시스템과의 상호작용)
+│   ├── config/                     # 설정 관리 (YAML 기반)
+│   │   ├── base_config.yaml        # 공통 설정
+│   │   └── store_configs/          # 매장별 설정 (예: a_store_config.yaml, b_store_config.yaml)
+│   ├── web_automation/             # 웹 자동화 (Playwright 구현)
+│   │   ├── base_crawler.py         # 기본 크롤러 (공통 웹 액션)
+│   │   └── store_crawlers/         # 매장별 크롤러 구현 (예: a_store_crawler.py, b_store_crawler.py)
+│   ├── notifications/              # 알림 시스템 (예: notification_service.py, telegram_adapter.py)
+│   ├── logging/                    # 로깅 시스템 (예: structured_logger.py)
+│   └── factories/                  # 의존성 주입을 위한 팩토리 (예: automation_factory.py)
+├── interfaces/                     # 인터페이스 계층 (사용자 및 외부 시스템과의 접점)
+│   ├── api/                        # API 엔드포인트 (AWS Lambda 핸들러)
+│   │   └── lambda_handler.py
+│   └── cli/                        # CLI 인터페이스
+│       └── main.py
+├── shared/                         # 공유 컴포넌트 (범용 유틸리티, 예외 등)
+│   ├── exceptions/                 # 커스텀 예외 (예: automation_exceptions.py)
+│   └── utils/                      # 유틸리티 함수 (예: date_utils.py)
+├── doc/                            # 시스템 관련 문서 (유지)
+├── reference/                      # 참조 자료 (유지)
+├── result_logs/                    # 실행 로그 저장소 (유지)
+├── venv/                           # Python 가상 환경 (유지)
+├── .cursor/                        # Cursor 설정 파일 (유지)
+├── README.md                       # 프로젝트 메인 설명서 (업데이트 완료)
+├── MIGRATION_GUIDE.md              # 기존 시스템에서 마이그레이션 가이드 (새로 생성)
+└── requirements.txt                # 프로젝트 의존성 목록 (업데이트 완료)

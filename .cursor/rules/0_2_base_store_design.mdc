@@ -1,0 +1,30 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# [1] BaseStore 클래스 설계
+
+## 🧱 목표
+- 모든 매장 클래스는 BaseStore를 상속받아 같은 인터페이스로 작동
+- 로그인, 차량 검색, 쿠폰 조회, 쿠폰 적용 로직을 개별화
+
+## 🧩 추상 클래스 구조
+```python
+class BaseStore:
+    def __init__(self, car_number: str):
+        self.car_number = car_number
+
+    async def run(self): ...
+    async def login(self, page): ...
+    async def search_car(self, page): ...
+    async def get_coupon_history(self, page): ...
+    async def apply_coupons(self, page, coupons): ...
+```
+- 각 매장(AStore, BStore 등)은 BaseStore를 상속받아 구현
+- DISCOUNT_TYPES 등 매장 전용 정보도 클래스 내부에서 정의
+
+## 🧠 장점
+- 코드 일관성 유지
+- 테스트 및 확장성 뛰어남
+- 새로운 매장 추가 시 복사만 하면 됨

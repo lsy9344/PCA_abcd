@@ -1,0 +1,70 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# 1. 시스템 전체 아키텍처 및 실행 흐름
+
+## 1. 전체 흐름도 (System Flow Diagram)
+
+```mermaid
+graph TD
+    subgraph "사용자 입력 및 트리거"
+        direction TB
+        A[사용자: Google Form 입력] --> B[Google Sheet 기록];
+        B --> C[Google Apps Script 실행];
+    end
+
+    subgraph "AWS 백엔드 (자동화 서버)"
+        direction TB
+        D[API Gateway: 외부 요청 수신] --> E[Lambda 함수: 자동화 로직 수행];
+        E -- 로깅 --> J[CloudWatch Logs];
+        E -- 실패 알림 --> K[Telegram];
+    end
+
+    subgraph "자동화 대상"
+        I[주차 정산 웹사이트]
+    end
+
+    C -- HTTP 요청 --> D;
+    E -- Playwright 제어 --> I;
+```
+
+## 2. 시스템 목표
+
+-   **다양한 주차 정산 사이트**에 자동으로 로그인하여, 차량번호로 할인 대상 차량을 조회하고, **각 매장의 정책에 맞는 최적의 할인 쿠폰**을 적용한다.
+
+## 3. 핵심 아키텍처
+
+-   **사용자 입력**: Google Form을 통해 차량번호, 매장명 등을 입력받아 Google Sheet에 기록합니다.
+-   **실행 트리거**: Google Sheet의 변경을 감지하는 Google Apps Script가 AWS API Gateway를 통해 Lambda 함수를 호출합니다.
+-   **Lambda 함수**: 전체 자동화 프로세스를 실행하는 진입점. `store_name` (예: "A", "B")을 파라미터로 받아 해당 매장의 자동화를 시작한다.
+-   **Store Router**: `store_name`에 따라 적절한 `BaseStore` 구현체(예: `AStore`, `BStore`)를 선택하고 실행한다.
+-   **BaseStore (추상 클래스)**: 모든 매장 클래스가 상속받는 기본 템플릿. `run`, `login`, `search_car`, `get_coupon_history`, `apply_coupons` 등 모든 매장이 구현해야 할 메서드의 **인터페이스를 정의**한다.
+-   **AStore, BStore 등 (구현 클래스)**: `BaseStore`를 상속받아 **각 매장 사이트의 특성에 맞게** 실제 로직을 구현한다.
+    -   **`get_coupon_history`**: 사이트의 HTML 구조가 다르므로, **매장별로 완전히 다르게 구현**된다.
+    -   **`apply_coupons`**: 적용할 쿠폰의 종류와 버튼 Selector가 다르므로, **매장별로 다르게 구현**된다.
+-   **DiscountRule (할인 규칙)**: 쿠폰 적용 개수를 결정하는 비즈니스 로직.
+    -   `BaseDiscountRule`: 평일(3시간), 주말(2시간) 등 **공통적인 목표 시간**과 기본 규칙을 정의한다.
+    -   `ADiscountRule`, `BDiscountRule`: `BaseDiscountRule`을 상속받아, **각 매장의 고유한 쿠폰 종류와 정책**에 맞춰 적용할 쿠폰 개수를 최종 결정한다.
+-   **Config**: `config.py` 파일에 로그인 정보, URL, 쿠폰 이름, Selector 등 **변경 가능성이 높은 모든 데이터**를 매장별로 분리하여 관리한다.
+-   **로깅 및 알림**: 모든 실행 로그는 CloudWatch에 기록되며, 실패 시에는 Telegram으로 즉시 알림을 전송합니다.
+
+## 4. 실행 순서 (Sequence)
+
+1.  **사용자 입력 및 Lambda 실행**: Google Form 제출부터 Apps Script를 거쳐 Lambda 핸들러가 `store_name`과 `car_number`를 받아 실행된다.
+2.  **Store 객체 생성**: `StoreRouter`가 `store_name`을 기반으로 `AStore` 또는 `BStore` 객체를 생성한다.
+3.  **`run()` 메서드 실행**: 선택된 `Store` 객체의 `run` 메서드가 호출된다.
+4.  **Playwright 초기화**: `run` 메서드 내에서 브라우저와 페이지 객체를 초기화한다.
+5.  **로그인**: `login()` 메서드를 호출하여 사이트에 로그인한다. (팝업 처리 포함)
+6.  **차량 검색**: `search_car(car_number)`를 호출하여 대상 차량을 조회한다.
+7.  **쿠폰 이력 조회**: `get_coupon_history()`를 호출한다.
+    -   **(매장별 로직)** 각 매장 사이트의 **고유한 HTML 구조를 파싱**하여 `my_history`, `total_history`, `discount_info`를 반환한다.
+8.  **적용할 쿠폰 결정**: `DiscountRule.decide_coupon_to_apply()`를 호출한다.
+    -   **(매장별 로직)** 해당 매장의 `DiscountRule`이 **고유한 쿠폰 종류와 정책**에 따라 적용할 쿠폰(`coupons_to_apply`)을 결정한다.
+9.  **쿠폰 적용**: `apply_coupons(coupons_to_apply)`를 호출한다.
+    -   **(매장별 로직)** 결정된 쿠폰을 사이트에서 실제로 적용한다.
+10. **결과 처리 및 종료**: 모든 과정이 성공적으로 끝나면 로그를 남기고, 실패 시 **실패 지점, 매장, 원인**을 포함한 텔레그램 알림을 보낸다.
+
+---
+이 문서는 시스템의 전체적인 구조를 이해하고, 새로운 매장을 추가할 때 어떤 부분을 구현해야 하는지 파악하기 위한 가이드 역할을 한다.

@@ -1,0 +1,144 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# 3. 사이트 구조 및 셀렉터 요약표
+
+이 문서는 Playwright 자동화에서 사용하는  
+핵심 HTML 요소(셀렉터)와 구조를 한눈에 정리한 표입니다.  
+이 표를 기반으로 Playwright 스크립트에서 각 기능을 쉽게 구현할 수 있습니다.
+
+---
+
+## A 사이트 주요 기능별 셀렉터 정리
+
+| 단계        | 기능 설명                | 셀렉터/타입                | 비고                  |
+|-------------|-------------------------|----------------------------|-----------------------|
+| 1           | 인트로 팝업 닫기        | `#skip` (ID)               | 버튼                  |
+| 2           | 공지 팝업 닫기          | `#popupCancel` (ID)        | 버튼                  |
+| 3           | 튜토리얼/기타 팝업 닫기 | ESC, `//*[contains(text(), '닫기')]` (XPATH) | 여러 팝업 대응        |
+| 4           | 아이디 입력             | `#id` (ID)                 | 텍스트 입력           |
+| 5           | 비밀번호 입력           | `#password` (ID)           | 텍스트 입력           |
+| 6           | 로그인 버튼             | `#login` (ID)              | 버튼                  |
+| 7           | 로그인 후 안내 팝업 닫기| `#gohome` (ID)             | 버튼                  |
+| 8           | 차량번호 입력           | `#carNumber` (ID)          | 텍스트 입력           |
+| 9           | 차량 검색 버튼          | `button[name="search"]` (NAME), `.btn-search` (CLASS), `button:has-text("검색")` | 여러 방식 대응 |
+| 10          | 차량 선택 버튼          | `#next` (ID), `button:has-text("차량 선택")` | 텍스트/ID 대응      |
+| 11          | 보유 할인권 테이블      | `#productList tr` (ID + TR) | 할인권 정보           |
+| 12          | 매장 할인 이력 테이블   | `tbody#myDcList tr` (ID + TR)| 내역 추출            |
+| 13          | 전체 할인 이력 테이블   | `#allDcList tr` (ID + TR)   | 내역 추출             |
+| 14          | 쿠폰 적용 버튼          | `button:has-text("적용")` (텍스트), 또는 각 행 내부 | tr 내 버튼 반복      |
+| 15          | 확인/완료 팝업 버튼     | `button:has-text("확인")` (텍스트) | 적용 확인/완료      |
+
+---
+
+## 셀렉터 사용 예시 (Playwright 코드)
+
+```python
+# 팝업 닫기
+await page.click("#skip")
+await page.click("#popupCancel")
+await page.keyboard.press("Escape")
+await page.locator('button:has-text("닫기")').click()
+
+# 로그인
+await page.fill("#id", "아이디")
+await page.fill("#password", "비밀번호")
+await page.click("#login")
+
+# 차량 검색
+await page.fill("#carNumber", "123가4567")
+await page.click('button[name="search"]')
+
+# 차량 선택
+await page.click("#next")
+# 또는
+await page.locator('button:has-text("차량 선택")').click()
+
+# 할인권 정보 추출 (테이블 반복)
+rows = await page.locator("#productList tr").all()
+for row in rows:
+    text = await row.inner_text()
+    # 필요한 정보 파싱
+
+# 쿠폰 적용
+await page.locator('button:has-text("적용")').click()
+
+# 팝업 확인
+await page.locator('button:has-text("확인")').click()
+
+
+---
+
+참고사항
+사이트 구조 변경 시, 셀렉터(특히 버튼/테이블/팝업 등)는 항상 최신화 필요
+
+Playwright의 locator, click, fill, keyboard.press 등은
+모든 셀렉터 조합에 사용할 수 있음
+
+동적 UI(비동기 로딩 등)는 await page.wait_for_selector(...)로 처리 권장
+
+# 3. 셀렉터(Selector) 관리 정책
+
+## 1. 기본 원칙
+
+-   **매장별 완전 분리**: **모든 셀렉터는 매장별로 다르다.** A 매장과 B 매장의 웹사이트는 HTML 구조가 전혀 다르므로, 셀렉터를 공유하려는 시도는 절대 금지된다.
+-   **`config.py` 집중 관리**: 모든 셀렉터는 `config.py`의 `STORE_CONFIGS` 딕셔너리 내에 각 매장별로 그룹화하여 정의한다. 코드 안에 셀렉터 문자열을 하드코딩하는 것을 금지한다.
+-   **구체적이고 안정적인 셀렉터 사용**: `id`가 가장 안정적이며, 없을 경우 `name`, `class` 순으로 사용한다. 동적으로 변하는 `class` 이름은 피하고, 텍스트 기반 셀렉터(`:has-text("텍스트")`)는 최후의 수단으로 사용한다.
+
+## 2. 셀렉터 예시 (`config.py`)
+
+```python
+# config/global_config.py
+
+STORE_CONFIGS = {
+    "A": {
+        "WEBSITE_URL": "https://a-store.example.com",
+        "LOGIN": { ... },
+        "SELECTORS": {
+            "LOGIN_ID": "#id",
+            "LOGIN_PASSWORD": "#password",
+            "LOGIN_BUTTON": "#login",
+            "CAR_NUMBER_INPUT": "#carNumber",
+            "SEARCH_BUTTON": "button[name='search']",
+            "COUPON_HISTORY_TABLE": "#myDcList",
+            "APPLY_BUTTON_TEXT": "적용"
+        },
+        "DISCOUNT_TYPES": { ... }
+    },
+    "B": {
+        "WEBSITE_URL": "https://b-store-complex.com",
+        "LOGIN": { ... },
+        "SELECTORS": {
+            "LOGIN_ID": "#userId",
+            "LOGIN_PASSWORD": "#userPwd",
+            "LOGIN_BUTTON": "input[type='submit']",
+            "CAR_NUMBER_INPUT": "input[name='carNo']",
+            "SEARCH_BUTTON": "button:has-text('검색')",
+            "DISCOUNT_HISTORY_LIST": "ul.discount-list",
+            "APPLY_BUTTON_FREE": "a:has-text('무료 1시간할인')",
+            "APPLY_BUTTON_PAID": "a:has-text('유료 30분할인')"
+        },
+        "DISCOUNT_TYPES": { ... }
+    }
+}
+```
+
+## 3. 매장별 셀렉터 상세 설명
+
+### 3.1. A 매장 셀렉터 (`doc/3_a_site_selectors.md` 참고)
+
+-   A 매장은 대부분의 중요 요소에 `id`가 부여되어 있어 셀렉터가 비교적 단순하고 안정적이다.
+-   쿠폰 정보는 `<table>` 태그 안에 `<tr>`, `<td>`로 구성되어 있어 구조 파싱이 용이하다.
+
+### 3.2. B 매장 셀렉터 (`doc/50_b_site_html_selector.md` 참고)
+
+-   **복잡성**: B 매장은 `id`가 거의 없고, CSS `class` 이름이 복잡하며, 구조가 `<div>`와 `<ul>`, `<li>`로 중첩되어 있어 파싱이 까다롭다.
+-   **동적 요소**: 쿠폰 적용 버튼은 쿠폰 이름(`"무료 1시간할인"`)을 포함하는 `<a>` 태그로, 텍스트 기반 탐색이 필수적이다.
+-   **쿠폰 이력**: 할인 내역은 `<li>` 태그의 리스트 형태로 제공되므로, `for` 루프를 돌며 각 항목의 텍스트를 분석해야 한다.
+-   **주의**: B 매장의 셀렉터는 웹사이트 업데이트 시 깨질 확률이 높으므로, `try-except` 구문을 더욱 견고하게 작성하고, 에러 발생 시 명확한 로그를 남겨야 한다.
+
+---
+
+이 문서는 새로운 매장을 추가하거나 기존 매장의 웹사이트 UI가 변경되었을 때, 셀렉터를 어떻게 수정하고 관리해야 하는지에 대한 가이드라인을 제공한다.
