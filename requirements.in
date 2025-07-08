@@ -1,0 +1,6 @@
+# 이 파일은 프로젝트의 직접적인 의존성을 명시합니다.
+# 'pip-compile' 명령어를 실행하여 requirements.txt를 생성하세요.
+playwright==1.40.0
+boto3>=1.26.0
+lxml>=4.9.0
+requests>=2.31.0
