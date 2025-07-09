@@ -1,13 +1,15 @@
 # 1. AWS Lambda 공식 베이스 이미지 사용
 FROM public.ecr.aws/lambda/python:3.12
 
-# 2. dnf를 사용하여 필수 유틸리티 설치
-RUN dnf install -y wget tar gzip && dnf clean all
+# 2. 필수 유틸리티 설치 및 microdnf를 전체 dnf로 업그레이드
+# 이 단계가 모든 문제를 해결하는 핵심입니다.
+RUN dnf install -y wget tar gzip dnf && \
+    dnf clean all
 
-# 3. Google Chrome 최신 버전을 다운로드하고, dnf로 설치
-# microdnf는 'localinstall'을 지원하지 않으므로 'install' 명령어를 사용합니다.
+# 3. Google Chrome 최신 버전을 다운로드하고, 전체 dnf로 설치
+# 전체 dnf는 'localinstall' 명령어를 지원하여 의존성을 완벽하게 자동 해결합니다.
 RUN wget -O /tmp/google-chrome.rpm "https://dl.google.com/linux/direct/google-chrome-stable_current_x86_64.rpm" && \
-    dnf install -y /tmp/google-chrome.rpm && \
+    dnf localinstall -y /tmp/google-chrome.rpm && \
     rm /tmp/google-chrome.rpm
 
 # 4. requirements.txt 복사 및 Python 패키지 설치
