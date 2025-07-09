@@ -22,38 +22,51 @@ class BaseCrawler:
     async def _initialize_browser(self) -> None:
         """
         Lambda 환경에 최적화된 브라우저 초기화.
+        더 많은 최적화 옵션을 추가하고 타임아웃을 90초로 늘려 콜드 스타트 문제를 해결합니다.
         """
         try:
             # Playwright 인스턴스 시작
             self.playwright = await async_playwright().start()
 
-            # Lambda 전용 브라우저 옵션
+            # Lambda 환경을 위한 최종 최적화 브라우저 옵션
             browser_args = [
-                # 🔥 Lambda 필수 옵션들
+                # --- 핵심 호환성 옵션 ---
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
                 '--single-process',
                 '--no-zygote',
-                '--disable-dev-shm-usage',
                 
-                # 성능 최적화
+                # --- 리소스 사용량 최소화 옵션 ---
                 '--disable-gpu',
+                '--disable-software-rasterizer',
+                '--disable-extensions',
+                '--disable-component-update',
+                '--disable-default-apps',
+                '--disable-client-side-phishing-detection',
+                '--disable-sync',
+                '--disable-background-networking',
                 '--disable-background-timer-throttling',
                 '--disable-backgrounding-occluded-windows',
                 '--disable-renderer-backgrounding',
+                '--disable-breakpad',
+                '--disable-hang-monitor',
+                '--disable-features=VizDisplayCompositor,TranslateUI',
+                '--mute-audio',
+                '--hide-scrollbars',
                 
-                # 화면 설정
+                # --- 화면 설정 ---
                 '--window-size=1920,1080',
             ]
             
-            # 브라우저 시작 (타임아웃 60초)
+            # 브라우저 시작 (타임아웃 90초로 대폭 증가)
             self.browser = await self.playwright.chromium.launch(
                 headless=True,
                 args=browser_args,
-                timeout=60000
+                timeout=90000  # 60초 -> 90초로 타임아웃 증가
             )
             
-            # 컨텍스트 생성 (문제가 된 timeout 인자 제거)
+            # 컨텍스트 생성
             self.context = await self.browser.new_context(
                 viewport={'width': 1920, 'height': 1080},
                 user_agent='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -64,7 +77,7 @@ class BaseCrawler:
             # 페이지 생성
             self.page = await self.context.new_page()
             
-            # 페이지 타임아웃 설정 (이곳에서 설정하는 것이 올바른 방법)
+            # 페이지 타임아웃 설정
             self.page.set_default_timeout(30000)
             self.page.set_default_navigation_timeout(30000)
             
