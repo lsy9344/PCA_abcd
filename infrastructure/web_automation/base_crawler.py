@@ -22,7 +22,6 @@ class BaseCrawler:
     async def _initialize_browser(self) -> None:
         """
         Lambda 환경에 최적화된 브라우저 초기화.
-        브라우저 실행 타임아웃을 60초로 늘려 콜드 스타트 문제를 완화합니다.
         """
         try:
             # Playwright 인스턴스 시작
@@ -47,26 +46,25 @@ class BaseCrawler:
                 '--window-size=1920,1080',
             ]
             
-            # 브라우저 시작 (타임아웃 60초로 증가)
+            # 브라우저 시작 (타임아웃 60초)
             self.browser = await self.playwright.chromium.launch(
                 headless=True,
                 args=browser_args,
-                timeout=60000  # 30초 -> 60초로 타임아웃 증가
+                timeout=60000
             )
             
-            # 컨텍스트 생성 (Lambda 최적화)
+            # 컨텍스트 생성 (문제가 된 timeout 인자 제거)
             self.context = await self.browser.new_context(
                 viewport={'width': 1920, 'height': 1080},
                 user_agent='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                 ignore_https_errors=True,
-                java_script_enabled=True,
-                timeout=30000
+                java_script_enabled=True
             )
             
             # 페이지 생성
             self.page = await self.context.new_page()
             
-            # 페이지 타임아웃 설정
+            # 페이지 타임아웃 설정 (이곳에서 설정하는 것이 올바른 방법)
             self.page.set_default_timeout(30000)
             self.page.set_default_navigation_timeout(30000)
             
