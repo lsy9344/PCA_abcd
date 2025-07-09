@@ -1,0 +1,48 @@
+name: 🚀 Deploy to AWS Lambda Container
+
+on:
+  push:
+    branches: [main] # 또는 배포하고 싶은 브랜치 이름
+
+env:
+  REGION: ap-northeast-2
+  ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+  FUNCTION_NAME: parkingauto_250707
+  IMAGE_NAME: parking_auto_ecrrepo_2
+  ECR_URL: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.ap-northeast-2.amazonaws.com/${{ env.IMAGE_NAME }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: 📥 코드 체크아웃
+      uses: actions/checkout@v4
+
+    - name: 🔐 AWS 인증 설정
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.REGION }}
+
+    - name: 🔓 ECR 로그인
+      run: |
+        aws ecr get-login-password --region $REGION | \
+        docker login --username AWS --password-stdin $ECR_URL
+
+    - name: 🛠 Docker 이미지 빌드 및 태그
+      run: |
+        docker build -t $IMAGE_NAME:latest .
+        docker tag $IMAGE_NAME:latest $ECR_URL:latest
+
+    - name: 📤 ECR로 푸시
+      run: |
+        docker push $ECR_URL:latest
+
+    - name: 🔄 Lambda 함수 업데이트
+      run: |
+        aws lambda update-function-code \
+          --function-name $FUNCTION_NAME \
+          --image-uri $ECR_URL:latest \
+          --region $REGION
