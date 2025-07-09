@@ -2,7 +2,7 @@ name: 🚀 Deploy to AWS Lambda Container
 
 on:
   push:
-    branches: [main] # 또는 배포하고 싶은 브랜치 이름
+    branches: [sec_office_pc] # 또는 배포하고 싶은 브랜치 이름
 
 env:
   REGION: ap-northeast-2
