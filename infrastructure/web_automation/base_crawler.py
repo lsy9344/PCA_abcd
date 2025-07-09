@@ -10,7 +10,10 @@ from core.domain.models.store import StoreConfig
 from infrastructure.logging.structured_logger import StructuredLogger
 
 class BaseCrawler:
-    def __init__(self):
+    def __init__(self, store_config, playwright_config, structured_logger):
+        self.store_config = store_config
+        self.playwright_config = playwright_config
+        self.logger = structured_logger
         self.playwright = None
         self.browser = None
         self.context = None

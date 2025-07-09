@@ -40,6 +40,6 @@ aws lambda update-function-code `
     --region $REGION `
     --architectures "x86_64"
 
-# 배포 상태 확인!
+# 배포 상태 확인!!
 Write-Host "`n⏳ Waiting for deployment..." -ForegroundColor Yellow
 # ... (기존 스크립트의 나머지 부분은 그대로 사용)
