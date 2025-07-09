@@ -1,34 +1,33 @@
 FROM public.ecr.aws/lambda/python:3.12
 
-# 기본 패키지 설치 (yum 사용 - Amazon Linux 2 기반)
-RUN yum update -y && \
-    yum install -y \
+# microdnf를 사용한 최소 의존성 설치 (Amazon Linux 2023 호환)
+RUN microdnf update -y && \
+    microdnf install -y \
         wget \
+        tar \
+        gzip \
+    && microdnf clean all
+
+# Google Chrome 최신 버전 직접 다운로드
+RUN wget -O /tmp/google-chrome.rpm "https://dl.google.com/linux/direct/google-chrome-stable_current_x86_64.rpm" && \
+    rpm -ivh /tmp/google-chrome.rpm --nodeps --force && \
+    rm /tmp/google-chrome.rpm
+
+# Chrome 실행에 필요한 최소 라이브러리들을 별도로 다운로드
+RUN microdnf install -y \
         nss \
         atk \
         cups-libs \
+        libdrm \
         gtk3 \
         libXcomposite \
-        libXcursor \
         libXdamage \
-        libXext \
-        libXi \
         libXrandr \
-        libXScrnSaver \
-        libXtst \
-        pango \
+        libXss \
         alsa-lib \
-        libdrm \
-        mesa-libgbm \
-        xorg-x11-server-Xvfb \
-    && yum clean all
+    && microdnf clean all
 
-# Google Chrome 최신 버전 직접 다운로드 (검증된 방법)
-RUN wget -O /tmp/google-chrome.rpm "https://dl.google.com/linux/direct/google-chrome-stable_current_x86_64.rpm" && \
-    yum localinstall -y /tmp/google-chrome.rpm && \
-    rm /tmp/google-chrome.rpm
-
-# 🚨 중요: 모든 필수 패키지들 명시적으로 설치
+# 🚨 중요: 모든 필수 Python 패키지들 명시적으로 설치
 RUN pip install --no-cache-dir \
     PyYAML>=6.0 \
     holidays>=0.34 \
