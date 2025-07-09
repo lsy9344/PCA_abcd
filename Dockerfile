@@ -1,28 +1,45 @@
 # 1. AWS Lambda 공식 베이스 이미지 사용
 FROM public.ecr.aws/lambda/python:3.12
 
-# 2. 필수 유틸리티 설치 및 microdnf를 전체 dnf로 업그레이드
-# 이 단계가 모든 문제를 해결하는 핵심입니다.
-RUN dnf install -y wget tar gzip dnf && \
-    dnf clean all
+# 2. Playwright의 내장 브라우저 실행에 필요한 최소한의 시스템 라이브러리 설치
+# (Playwright 공식 문서 및 커뮤니티 가이드 기반)
+RUN dnf install -y \
+    alsa-lib \
+    atk \
+    at-spi2-atk \
+    cairo \
+    cups-libs \
+    dbus-libs \
+    gtk3 \
+    libXcomposite \
+    libXdamage \
+    libXfixes \
+    libXrandr \
+    libXScrnSaver \
+    libxkbcommon \
+    libxshmfence \
+    mesa-libgbm \
+    nss \
+    pango \
+    # 폰트 관련 라이브러리 (스크린샷 깨짐 방지)
+     liberation-sans-fonts \
+    && dnf clean all
 
-# 3. Google Chrome 최신 버전을 다운로드하고, 전체 dnf로 설치
-# 전체 dnf는 'localinstall' 명령어를 지원하여 의존성을 완벽하게 자동 해결합니다.
-RUN wget -O /tmp/google-chrome.rpm "https://dl.google.com/linux/direct/google-chrome-stable_current_x86_64.rpm" && \
-    dnf localinstall -y /tmp/google-chrome.rpm && \
-    rm /tmp/google-chrome.rpm
-
-# 4. requirements.txt 복사 및 Python 패키지 설치
+# 3. requirements.txt 복사 및 Python 패키지 설치
 COPY requirements.txt ./
+# --no-cache-dir 옵션으로 이미지 용량 최적화
 RUN pip install --no-cache-dir -r requirements.txt
 RUN pip install --no-cache-dir playwright==1.40.0
+
+# 4. Playwright를 사용하여 Lambda 환경에 맞는 Chromium 브라우저 설치
+RUN playwright install chromium
 
 # 5. 애플리케이션 코드 복사
 COPY . ${LAMBDA_TASK_ROOT}/
 
 # 6. 환경 변수 설정
 ENV PYTHONPATH="${LAMBDA_TASK_ROOT}"
-ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+# PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD 변수는 제거하거나 0으로 설정해야 합니다.
 
 # 7. Lambda 핸들러 설정
 CMD ["interfaces.api.lambda_handler.lambda_handler"]
