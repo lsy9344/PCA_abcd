@@ -2,47 +2,48 @@ name: 🚀 Deploy to AWS Lambda Container
 
 on:
   push:
-    branches: [sec_office_pc]  # 또는 main 브랜치로 변경 가능
+    branches: [sec_office_pc]  # 또는 main
 
 env:
   REGION: ap-northeast-2
-  ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
   FUNCTION_NAME: parkingauto_250707
   IMAGE_NAME: parking_auto_ecrrepo_2
-  ECR_URL: "${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.ap-northeast-2.amazonaws.com/${{ env.IMAGE_NAME }}"
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     steps:
-    - name: 📥 코드 체크아웃
+    - name: 📥 Checkout code
       uses: actions/checkout@v4
 
-    - name: 🔐 AWS 인증 설정
+    - name: 🔐 Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v4
       with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ${{ env.REGION }}
 
-    - name: 🔓 ECR 로그인
+    - name: 🔓 Login to Amazon ECR
       run: |
-        aws ecr get-login-password --region $REGION | \
-        docker login --username AWS --password-stdin $ECR_URL
+        ECR_URL="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.REGION }}.amazonaws.com/${{ env.IMAGE_NAME }}"
+        aws ecr get-login-password --region ${{ env.REGION }} | docker login --username AWS --password-stdin $ECR_URL
 
-    - name: 🛠 Docker 이미지 빌드 및 태그
+    - name: 🛠 Build Docker image and tag
       run: |
-        docker build -t $IMAGE_NAME:latest .
-        docker tag $IMAGE_NAME:latest $ECR_URL:latest
+        ECR_URL="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.REGION }}.amazonaws.com/${{ env.IMAGE_NAME }}"
+        docker build -t ${{ env.IMAGE_NAME }}:latest .
+        docker tag ${{ env.IMAGE_NAME }}:latest $ECR_URL:latest
 
-    - name: 📤 ECR로 푸시
+    - name: 📤 Push to Amazon ECR
       run: |
+        ECR_URL="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.REGION }}.amazonaws.com/${{ env.IMAGE_NAME }}"
         docker push $ECR_URL:latest
 
-    - name: 🔄 Lambda 업데이트
+    - name: 🔄 Update Lambda function
       run: |
+        ECR_URL="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.REGION }}.amazonaws.com/${{ env.IMAGE_NAME }}"
         aws lambda update-function-code \
-          --function-name $FUNCTION_NAME \
+          --function-name ${{ env.FUNCTION_NAME }} \
           --image-uri $ECR_URL:latest \
-          --region $REGION
+          --region ${{ env.REGION }}
