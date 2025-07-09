@@ -3,6 +3,7 @@ name: 🚀 Deploy to AWS Lambda Container
 on:
   push:
     branches: [sec_office_pc]  # 또는 main
+  workflow_dispatch:  # 수동 실행 가능
 
 env:
   REGION: ap-northeast-2
@@ -12,6 +13,7 @@ env:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 30  # 타임아웃 설정
 
     steps:
     - name: 📥 Checkout code
@@ -24,26 +26,167 @@ jobs:
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ${{ env.REGION }}
 
+    - name: 🧹 Clean Docker environment (멀티아키텍처 매니페스트 방지)
+      run: |
+        echo "🚨 BuildKit 비활성화 및 캐시 정리 중..."
+        export DOCKER_BUILDKIT=0
+        docker system prune -af
+        echo "✅ Docker 환경 정리 완료"
+
     - name: 🔓 Login to Amazon ECR
       run: |
+        echo "🔓 ECR 로그인 중..."
         ECR_URL="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.REGION }}.amazonaws.com/${{ env.IMAGE_NAME }}"
         aws ecr get-login-password --region ${{ env.REGION }} | docker login --username AWS --password-stdin $ECR_URL
+        echo "✅ ECR 로그인 완료"
 
-    - name: 🛠 Build Docker image and tag
+    - name: 🛠 Build Docker image (단일 아키텍처 강제)
       run: |
+        echo "🛠 Docker 이미지 빌드 중... (단일 아키텍처 강제)"
+        export DOCKER_BUILDKIT=0
         ECR_URL="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.REGION }}.amazonaws.com/${{ env.IMAGE_NAME }}"
-        docker build -t ${{ env.IMAGE_NAME }}:latest .
+        
+        # 단일 아키텍처 강제 빌드
+        docker build --platform linux/amd64 --no-cache -t ${{ env.IMAGE_NAME }}:latest .
+        
+        # 아키텍처 검증
+        ARCH=$(docker inspect ${{ env.IMAGE_NAME }}:latest --format '{{.Architecture}}')
+        echo "빌드된 이미지 아키텍처: $ARCH"
+        
+        if [ "$ARCH" != "amd64" ]; then
+          echo "❌ 잘못된 아키텍처: $ARCH (amd64 필요)"
+          exit 1
+        fi
+        
+        # 태깅
         docker tag ${{ env.IMAGE_NAME }}:latest $ECR_URL:latest
+        echo "✅ Docker 이미지 빌드 및 태깅 완료"
+
+    - name: 🔍 ECR 매니페스트 검증 (기존 이미지)
+      run: |
+        echo "🔍 기존 ECR 매니페스트 확인 중..."
+        ECR_URL="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.REGION }}.amazonaws.com/${{ env.IMAGE_NAME }}"
+        
+        # 기존 이미지가 있는지 확인하고 매니페스트 타입 검증
+        if aws ecr describe-images --repository-name ${{ env.IMAGE_NAME }} --image-ids imageTag=latest --region ${{ env.REGION }} >/dev/null 2>&1; then
+          MANIFEST=$(aws ecr batch-get-image --repository-name ${{ env.IMAGE_NAME }} --image-ids imageTag=latest --query 'images[].imageManifest' --output text --region ${{ env.REGION }})
+          
+          if echo "$MANIFEST" | grep -q "manifest.list.v2"; then
+            echo "⚠️ 기존 이미지가 멀티아키텍처 매니페스트입니다. 덮어쓰기 진행..."
+          else
+            echo "✅ 기존 이미지는 단일 아키텍처 매니페스트입니다."
+          fi
+        else
+          echo "ℹ️ 기존 이미지가 없습니다. 새로 생성됩니다."
+        fi
 
     - name: 📤 Push to Amazon ECR
       run: |
+        echo "📤 ECR로 이미지 푸시 중..."
         ECR_URL="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.REGION }}.amazonaws.com/${{ env.IMAGE_NAME }}"
         docker push $ECR_URL:latest
+        echo "✅ ECR 푸시 완료"
+
+    - name: 🔍 ECR 매니페스트 최종 검증
+      run: |
+        echo "🔍 푸시된 이미지 매니페스트 최종 검증 중..."
+        MANIFEST=$(aws ecr batch-get-image --repository-name ${{ env.IMAGE_NAME }} --image-ids imageTag=latest --query 'images[].imageManifest' --output text --region ${{ env.REGION }})
+        
+        if echo "$MANIFEST" | grep -q "manifest.list.v2"; then
+          echo "❌ 멀티아키텍처 매니페스트가 감지되었습니다!"
+          echo "Lambda는 단일 아키텍처 매니페스트만 지원합니다."
+          exit 1
+        else
+          echo "✅ 단일 아키텍처 매니페스트 확인됨 (manifest.v2+json)"
+        fi
+
+    - name: ⏳ Lambda 함수 상태 확인
+      run: |
+        echo "⏳ Lambda 함수 상태 확인 중..."
+        STATUS=$(aws lambda get-function --function-name ${{ env.FUNCTION_NAME }} --region ${{ env.REGION }} --query 'Configuration.LastUpdateStatus' --output text)
+        echo "현재 Lambda 함수 상태: $STATUS"
+        
+        # 업데이트가 진행 중이면 대기
+        while [ "$STATUS" = "InProgress" ]; do
+          echo "⏳ Lambda 함수 업데이트 진행 중... 10초 대기"
+          sleep 10
+          STATUS=$(aws lambda get-function --function-name ${{ env.FUNCTION_NAME }} --region ${{ env.REGION }} --query 'Configuration.LastUpdateStatus' --output text)
+        done
+        
+        echo "✅ Lambda 함수 준비 완료"
 
     - name: 🔄 Update Lambda function
       run: |
+        echo "🔄 Lambda 함수 업데이트 중..."
         ECR_URL="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.REGION }}.amazonaws.com/${{ env.IMAGE_NAME }}"
+        
         aws lambda update-function-code \
           --function-name ${{ env.FUNCTION_NAME }} \
           --image-uri $ECR_URL:latest \
-          --region ${{ env.REGION }}
+          --region ${{ env.REGION }} \
+          --architectures "x86_64"
+        
+        echo "✅ Lambda 함수 업데이트 완료"
+
+    - name: ⏳ Lambda 함수 업데이트 완료 대기
+      run: |
+        echo "⏳ Lambda 함수 업데이트 완료 대기 중..."
+        
+        for i in {1..30}; do
+          STATUS=$(aws lambda get-function --function-name ${{ env.FUNCTION_NAME }} --region ${{ env.REGION }} --query 'Configuration.LastUpdateStatus' --output text)
+          
+          if [ "$STATUS" = "Successful" ]; then
+            echo "✅ Lambda 함수 업데이트 성공!"
+            break
+          elif [ "$STATUS" = "Failed" ]; then
+            echo "❌ Lambda 함수 업데이트 실패!"
+            aws lambda get-function --function-name ${{ env.FUNCTION_NAME }} --region ${{ env.REGION }} --query 'Configuration.LastUpdateStatusReason' --output text
+            exit 1
+          else
+            echo "⏳ 업데이트 상태: $STATUS (${i}/30)"
+            sleep 10
+          fi
+        done
+
+    - name: 🧪 Lambda 함수 테스트
+      run: |
+        echo "🧪 Lambda 함수 테스트 중..."
+        
+        # 테스트 실행
+        aws lambda invoke \
+          --function-name ${{ env.FUNCTION_NAME }} \
+          --region ${{ env.REGION }} \
+          --payload '{}' \
+          response.json
+        
+        # 응답 확인
+        echo "📋 Lambda 응답:"
+        cat response.json
+        
+        # 에러 체크
+        if grep -q "errorMessage" response.json; then
+          echo "❌ Lambda 함수 실행 중 오류 발생"
+          cat response.json
+          exit 1
+        else
+          echo "✅ Lambda 함수 테스트 성공!"
+        fi
+
+    - name: 📊 배포 결과 요약
+      if: always()
+      run: |
+        echo "📊 ===== 배포 결과 요약 ====="
+        echo "🏷️  이미지: ${{ env.IMAGE_NAME }}"
+        echo "🚀 함수: ${{ env.FUNCTION_NAME }}"
+        echo "🌍 리전: ${{ env.REGION }}"
+        echo "📅 배포 시간: $(date)"
+        
+        # Lambda 함수 최종 상태
+        STATUS=$(aws lambda get-function --function-name ${{ env.FUNCTION_NAME }} --region ${{ env.REGION }} --query 'Configuration.LastUpdateStatus' --output text 2>/dev/null || echo "Unknown")
+        echo "📋 최종 상태: $STATUS"
+        
+        if [ "$STATUS" = "Successful" ]; then
+          echo "🎉 배포 성공!"
+        else
+          echo "⚠️  배포 상태 확인 필요"
+        fi
