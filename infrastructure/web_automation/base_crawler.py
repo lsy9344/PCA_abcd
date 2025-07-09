@@ -22,8 +22,7 @@ class BaseCrawler:
     async def _initialize_browser(self) -> None:
         """
         Lambda 환경에 최적화된 브라우저 초기화.
-        복잡한 경로 탐색 로직을 제거하고 Playwright가 자동으로 브라우저를 찾도록 수정.
-        Dockerfile의 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright 설정을 따릅니다.
+        브라우저 실행 타임아웃을 60초로 늘려 콜드 스타트 문제를 완화합니다.
         """
         try:
             # Playwright 인스턴스 시작
@@ -48,11 +47,11 @@ class BaseCrawler:
                 '--window-size=1920,1080',
             ]
             
-            # 브라우저 시작 (executable_path 없이 Playwright가 자동으로 찾도록 함)
+            # 브라우저 시작 (타임아웃 60초로 증가)
             self.browser = await self.playwright.chromium.launch(
                 headless=True,
                 args=browser_args,
-                timeout=30000  # 30초 타임아웃
+                timeout=60000  # 30초 -> 60초로 타임아웃 증가
             )
             
             # 컨텍스트 생성 (Lambda 최적화)
