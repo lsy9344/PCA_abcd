@@ -200,7 +200,7 @@ class DiscountCalculator:
         
         total_apply_hours = 0
         for app in applications:
-            # 해당 쿠폰의 duration_minutes 찾기!
+            # 해당 쿠폰의 duration_minutes 찾기
             rule_duration = next((rule.duration_minutes for rule in self.coupon_rules 
                                 if rule.coupon_name == app.coupon_name), 0)
             apply_hours = app.count * (rule_duration / 60.0)
