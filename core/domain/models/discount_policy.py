@@ -76,9 +76,7 @@ class DiscountCalculator:
         applications = []
         period_type = "평일" if is_weekday else "주말"
         
-        print(f"\n{'='*60}")
-        print(f"[@/rules 기준] {period_type} 쿠폰 계산 - 시간 기반 부족분 계산")
-        print(f"{'='*60}")
+        print(f"[@/rules 기준] {period_type} 쿠폰 계산 - ")
         
         # @/rules 지침에 따른 목표 시간 설정
         if is_weekday:
@@ -109,9 +107,7 @@ class DiscountCalculator:
         print(f"[현재상태] 무료: {current_free_hours:.1f}시간, 유료: {current_paid_hours:.1f}시간, 주말: {current_weekend_hours:.1f}시간")
         print(f"[현재상태] 총 적용된 시간: {total_current_hours:.1f}시간")
         
-        print(f"\n{'-'*50}")
         print(f"1단계: 무료 쿠폰 계산 (룰파일 4.4)")
-        print(f"{'-'*50}")
         
         # 1. 무료 쿠폰 계산 (@/rules 로직)
         free_rules = [rule for rule in self.coupon_rules if rule.coupon_type == CouponType.FREE]
@@ -149,9 +145,7 @@ class DiscountCalculator:
                 else:
                     print(f"[무료쿠폰] {rule.coupon_key} 이미 충분히 사용됨")
         
-        print(f"\n{'-'*50}")
         print(f"2단계: {period_type} 쿠폰 계산 (룰파일 4.2/4.3)")
-        print(f"{'-'*50}")
         
         # 2. 유료/주말 쿠폰 계산 (@/rules 로직)
         if is_weekday:
@@ -203,10 +197,6 @@ class DiscountCalculator:
                     ))
                 else:
                     print(f"[{target_type.value}쿠폰] {rule.coupon_key} 보유 쿠폰 부족: 필요 {paid_apply_count}개, 보유 {available}개")
-        
-        print(f"\n{'='*60}")
-        print(f"[최종결과] 적용할 쿠폰 총 {len(applications)}개")
-        print(f"{'='*60}")
         
         total_apply_hours = 0
         for app in applications:

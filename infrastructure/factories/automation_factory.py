@@ -39,20 +39,23 @@ class AutomationFactory:
             self._notification_service = TelegramAdapter(telegram_config, logger)
         return self._notification_service
     
+    # automation_factory.py
+
     def create_store_repository(self, store_id: str) -> StoreRepository:
         """매장 리포지토리 생성"""
         store_config = self.config_manager.get_store_config(store_id)
         playwright_config = self.config_manager.get_playwright_config()
         logger = self.create_logger(f"store_{store_id.lower()}")
         notification_service = self.create_notification_service()
-        
+
         if store_id.upper() == "A":
-            return AStoreCrawler(store_config, playwright_config, logger)
+            # ✅ 수정: AStoreCrawler에도 notification_service를 전달
+            return AStoreCrawler(store_config, playwright_config, logger, notification_service)
         elif store_id.upper() == "B":
             return BStoreCrawler(store_config, playwright_config, logger, notification_service)
         else:
-            raise StoreNotSupportedException(f"지원하지 않는 매장입니다: {store_id}")
-    
+            raise StoreNotSupportedException(f"지원하지 않는 매장입니다: {store_id}")    
+
     def create_discount_calculator(self, store_id: str) -> DiscountCalculator:
         """할인 계산기 생성"""
         discount_policy = self.config_manager.get_discount_policy(store_id)
