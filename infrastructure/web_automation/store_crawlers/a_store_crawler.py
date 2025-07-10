@@ -1,5 +1,5 @@
 """
-A매장 크롤러 구현
+A매장 크롤러 구현 - get_coupon_history 인수 수정된 버전
 """
 import re
 import asyncio
@@ -26,7 +26,9 @@ class AStoreCrawler(BaseCrawler):
         self.logger = OptimizedLogger("a_store_crawler", "A")  # 최적화된 로거 사용
         self.notification_service = notification_service
     
-    async def login(self) -> bool:
+    # login, search_vehicle 메서드는 변경 없음 ...
+
+    async def login(self, vehicle: Vehicle = None) -> bool:
         """로그인 수행 (팝업 처리 포함)"""
         try:
             await self._initialize_browser()
@@ -147,12 +149,13 @@ class AStoreCrawler(BaseCrawler):
         except Exception as e:
             details = self.logger.log_error("A", "차량검색", "FAIL_SEARCH", str(e))
             return False
-    
-    async def get_coupon_history(self) -> Tuple[Dict[str, Dict[str, int]], Dict[str, int], Dict[str, int]]:
+
+    # 🚨 여기를 수정했습니다.
+    async def get_coupon_history(self, vehicle: Vehicle) -> CouponHistory:
         """쿠폰 이력 조회"""
         try:
-            discount_types = self.store_config.discount_types
-            discount_info = {name: {'car': 0, 'total': 0} for name in discount_types.values()}
+            discount_types_mapping = self.store_config.discount_types
+            available_coupons = {name: {'car': 0, 'total': 0} for name in discount_types_mapping.values()}
             
             # productList 테이블 로드 대기
             await self.page.wait_for_selector('#productList tr', timeout=30000)
@@ -160,116 +163,92 @@ class AStoreCrawler(BaseCrawler):
             # 쿠폰 없음 체크
             empty_message = await self.page.locator('#productList td.empty').count()
             if empty_message > 0:
-                # 개발 환경에서만 쿠폰 없음 로그 기록
-                if self.logger.should_log_info():
-                    self.logger.log_info("[쿠폰상태] 보유한 쿠폰이 없습니다")
-                return discount_info, {name: 0 for name in discount_types.values()}, {name: 0 for name in discount_types.values()}
-            
-            # 쿠폰이 있는 경우 파싱
-            rows = await self.page.locator('#productList tr').all()
-            for row in rows:
-                try:
-                    cells = await row.locator('td').all()
-                    if len(cells) >= 2:
-                        name = (await cells[0].inner_text()).strip()
-                        count_text = (await cells[1].inner_text()).strip()
-                        
-                        for discount_name in discount_types.values():
-                            if discount_name in name:
-                                car_count, total_count = 0, 0
-                                if '/' in count_text:
-                                    parts = count_text.split('/')
-                                    car_part = parts[0].strip()
-                                    total_part = parts[1].strip()
-                                    car_match = re.search(r'(\d+)', car_part)
-                                    total_match = re.search(r'(\d+)', total_part)
-                                    car_count = int(car_match.group(1)) if car_match else 0
-                                    total_count = int(total_match.group(1)) if total_match else 0
-                                else:
-                                    match = re.search(r'(\d+)', count_text)
-                                    car_count = int(match.group(1)) if match else 0
-                                    total_count = car_count
-                                discount_info[discount_name] = {'car': car_count, 'total': total_count}
-                                break
-                except Exception:
-                    continue  # 파싱 오류는 로그 기록하지 않고 계속 진행
-            
-            # 개발 환경에서만 현재 보유 쿠폰 로깅
-            if self.logger.should_log_info():
-                self.logger.log_info(">>>>>[현재 적용 가능한 쿠폰]")
-                for name, counts in discount_info.items():
-                    self.logger.log_info(f"{name}: {counts['car']}개")
+                self.logger.log_info("[쿠폰상태] 보유한 쿠폰이 없습니다")
+            else:
+                # 쿠폰이 있는 경우 파싱
+                rows = await self.page.locator('#productList tr').all()
+                for row in rows:
+                    try:
+                        cells = await row.locator('td').all()
+                        if len(cells) >= 2:
+                            name = (await cells[0].inner_text()).strip()
+                            count_text = (await cells[1].inner_text()).strip()
+                            
+                            for discount_name in discount_types_mapping.values():
+                                if discount_name in name:
+                                    car_count, total_count = 0, 0
+                                    if '/' in count_text:
+                                        parts = count_text.split('/')
+                                        car_part = parts[0].strip()
+                                        total_part = parts[1].strip()
+                                        car_match = re.search(r'(\d+)', car_part)
+                                        total_match = re.search(r'(\d+)', total_part)
+                                        car_count = int(car_match.group(1)) if car_match else 0
+                                        total_count = int(total_match.group(1)) if total_match else 0
+                                    else:
+                                        match = re.search(r'(\d+)', count_text)
+                                        car_count = int(match.group(1)) if match else 0
+                                        total_count = car_count
+                                    available_coupons[discount_name] = {'car': car_count, 'total': total_count}
+                                    break
+                    except Exception:
+                        continue
             
             # 우리 매장 쿠폰 내역 (#myDcList)
-            my_history = {name: 0 for name in discount_types.values()}
+            my_history = {}
             try:
                 my_dc_rows = await self.page.locator('#myDcList tr').all()
                 for row in my_dc_rows:
                     cells = await row.locator('td').all()
                     if len(cells) >= 2:
                         name = (await cells[0].inner_text()).strip()
-                        count_text = (await cells[1].inner_text()).strip()
-                        
-                        for discount_name in discount_types.values():
-                            if discount_name in name:
-                                m = re.search(r'(\d+)', count_text)
-                                count = int(m.group(1)) if m else 0
-                                my_history[discount_name] = count
-                                break
+                        key = self.store_config.get_coupon_key(name)
+                        m = re.search(r'(\d+)', (await cells[1].inner_text()).strip())
+                        count = int(m.group(1)) if m else 0
+                        if key: my_history[key] = count
             except Exception:
-                pass  # myDcList 처리 실패는 로그 기록하지 않음
-            
-            # 개발 환경에서만 우리 매장 쿠폰 내역 로깅
-            if self.logger.should_log_info():
-                self.logger.log_info(">>>>>[우리 매장에서 적용한 쿠폰]")
-                for name, count in my_history.items():
-                    self.logger.log_info(f"{name}: {count}개")
-            
+                pass
+
             # 전체 쿠폰 이력 (#allDcList)
-            total_history = {name: 0 for name in discount_types.values()}
+            total_history = {}
             try:
                 total_rows = await self.page.locator('#allDcList tr').all()
                 for row in total_rows:
                     cells = await row.locator('td').all()
                     if len(cells) >= 2:
                         name = (await cells[0].inner_text()).strip()
-                        count_text = (await cells[1].inner_text()).strip()
-                        
-                        for discount_name in discount_types.values():
-                            if discount_name in name:
-                                m = re.search(r'(\d+)', count_text)
-                                count = int(m.group(1)) if m else 0
-                                total_history[discount_name] = count
-                                break
+                        key = self.store_config.get_coupon_key(name)
+                        m = re.search(r'(\d+)', (await cells[1].inner_text()).strip())
+                        count = int(m.group(1)) if m else 0
+                        if key: total_history[key] = count
             except Exception:
-                pass  # allDcList 처리 실패는 로그 기록하지 않음
-            
-            # 개발 환경에서만 전체 쿠폰 이력 로깅
-            if self.logger.should_log_info():
-                self.logger.log_info(">>>>>[전체 적용된 쿠폰] (다른매장+우리매장)")
-                for name, count in total_history.items():
-                    self.logger.log_info(f"{name}: {count}개")
+                pass
             
             # 보유 쿠폰량 체크 및 부족 시 텔레그램 알림 (유료 쿠폰만)
-            for coupon_name, counts in discount_info.items():
-                car_count = counts['car']
-                # A 매장 유료 쿠폰만 체크: "1시간할인권(유료)", "1시간주말할인권(유료)"
-                if ('1시간할인권(유료)' in coupon_name or '1시간주말할인권(유료)' in coupon_name) and car_count <= 50 and car_count > 0:
-                    # WARNING 레벨로 기록 (프로덕션에서도 기록됨)
-                    self.logger.log_warning(f"[경고] A 매장 {coupon_name} 쿠폰 부족: {car_count}개")
-                    # 비동기로 알림 전송
-                    asyncio.create_task(self._send_low_coupon_notification(coupon_name, car_count))
-            
-            return discount_info, my_history, total_history
+            for coupon_name, counts in available_coupons.items():
+                if ('1시간할인권(유료)' in coupon_name or '1시간주말할인권(유료)' in coupon_name) and counts['car'] <= 50 and counts['car'] > 0:
+                    self.logger.log_warning(f"[경고] A 매장 {coupon_name} 쿠폰 부족: {counts['car']}개")
+                    asyncio.create_task(self._send_low_coupon_notification(coupon_name, counts['car']))
+
+            return CouponHistory(
+                store_id="A",
+                vehicle_id=vehicle.number,
+                my_history=my_history,
+                total_history=total_history,
+                available_coupons=available_coupons
+            )
             
         except Exception as e:
-            details = self.logger.log_error("A", "쿠폰조회", "FAIL_PARSE", str(e))
-            return (
-                {name: {'car': 0, 'total': 0} for name in discount_types.values()},
-                {name: 0 for name in discount_types.values()},
-                {name: 0 for name in discount_types.values()}
+            self.logger.log_error(ErrorCode.FAIL_PARSE, "쿠폰조회", str(e))
+            return CouponHistory(
+                store_id="A",
+                vehicle_id=vehicle.number,
+                my_history={},
+                total_history={},
+                available_coupons={}
             )
-    
+
+    # apply_coupons, _send_low_coupon_notification 메서드는 변경 없음 ...
     async def apply_coupons(self, applications: List[CouponApplication]) -> bool:
         """쿠폰 적용"""
         try:
