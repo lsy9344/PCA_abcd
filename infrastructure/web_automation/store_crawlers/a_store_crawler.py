@@ -226,9 +226,9 @@ class AStoreCrawler(BaseCrawler):
             
             # 보유 쿠폰량 체크 및 부족 시 텔레그램 알림 (유료 쿠폰만)
             for coupon_name, counts in available_coupons.items():
-                if ('1시간할인권(유료)' in coupon_name or '1시간주말할인권(유료)' in coupon_name) and counts['car'] <= 50 and counts['car'] > 0:
-                    self.logger.log_warning(f"[경고] A 매장 {coupon_name} 쿠폰 부족: {counts['car']}개")
-                    asyncio.create_task(self._send_low_coupon_notification(coupon_name, counts['car']))
+                if ('1시간할인권(유료)' in coupon_name or '1시간주말할인권(유료)' in coupon_name) and counts['total'] <= 50 and counts['total'] > 0:
+                    self.logger.log_warning(f"[경고] A 매장 {coupon_name} 쿠폰 부족: {counts['total']}개")
+                    asyncio.create_task(self._send_low_coupon_notification(coupon_name, counts['total']))
 
             return CouponHistory(
                 store_id="A",
