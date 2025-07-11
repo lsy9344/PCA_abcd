@@ -186,26 +186,23 @@ class BStoreCrawler(BaseCrawler):
             self.logger.log_warning(f"[경고] 팝업 처리 중 오류 (무시하고 계속): {str(e)}")
 
     async def _ensure_search_state_checkbox(self, page: Page):
-        """검색 상태 유지 체크박스 확인 및 활성화"""
+        """검색 상태 유지 체크박스 확인 및 활성화 (ID 직접 지정 방식으로 수정)"""
         try:
-            checkbox_selectors = ['text=검색 상태 유지', 'label:has-text("검색 상태 유지")', 'input[type="checkbox"]']
-            checkbox_found = False
-            for selector in checkbox_selectors:
-                checkbox_element = page.locator(selector)
-                if await checkbox_element.count() > 0:
-                    # 올바른 체크박스를 찾기 위해 더 구체적인 로직 추가
-                    if selector != 'input[type="checkbox"]':
-                         checkbox_element = page.locator('label:has-text("검색 상태 유지")').locator('input')
-                    
-                    if not await checkbox_element.is_checked():
-                        await checkbox_element.check()
-                        self.logger.log_info("[성공] 검색 상태 유지 체크박스 활성화 완료")
-                    else:
-                        self.logger.log_info("[정보] 검색 상태 유지 체크박스 이미 활성화됨")
-                    checkbox_found = True
-                    break
-            if not checkbox_found:
-                self.logger.log_warning("[경고] 검색 상태 유지 체크박스를 찾을 수 없음")
+            # 우리가 HTML에서 확인한 고유 ID '#checkSaveId'를 직접 사용합니다.
+            checkbox_selector = '#checkSaveId'
+            checkbox_element = page.locator(checkbox_selector)
+
+            if await checkbox_element.count() > 0:
+                if not await checkbox_element.is_checked():
+                    # 체크되어 있지 않으면 체크합니다.
+                    await checkbox_element.check()
+                    self.logger.log_info("[성공] 검색 상태 유지 체크박스 활성화 완료")
+                else:
+                    self.logger.log_info("[정보] 검색 상태 유지 체크박스 이미 활성화됨")
+            else:
+                # ID로도 체크박스를 찾을 수 없는 경우 경고를 남깁니다.
+                self.logger.log_warning("[경고] 검색 상태 유지 체크박스를 찾을 수 없음 (ID: #checkSaveId)")
+                
         except Exception as e:
             self.logger.log_warning(f"[경고] 검색 상태 유지 체크박스 처리 중 오류: {str(e)}")
 
@@ -320,20 +317,26 @@ class BStoreCrawler(BaseCrawler):
     async def _handle_apply_popups_without_navigation(self, page: Page) -> bool:
         """쿠폰 적용 후 팝업 처리"""
         try:
-            for _ in range(6): # 3초 대기
+            # 3초 동안 팝업이 나타나는지 반복 확인
+            for _ in range(6): 
                 popup_title = page.locator('h3:has-text("알림")')
                 if await popup_title.count() > 0:
-                    ok_button = page.locator('.modal-buttons button:has-text("OK")')
+                    # ❗수정된 부분: 'button'을 'a'로 변경하여 <a> 태그를 찾도록 수정
+                    ok_button = page.locator('.modal-buttons a:has-text("OK")')
+                    
                     if await ok_button.count() > 0:
                         await ok_button.click()
+                        self.logger.log_info("[성공] 쿠폰 적용 알림 팝업 처리 완료")
                         return True
                 await page.wait_for_timeout(500)
+                
             self.logger.log_warning("[경고] 알림 팝업을 찾지 못했지만 계속 진행")
             return True
+            
         except Exception as e:
             self.logger.log_warning(f"[경고] 쿠폰 적용 팝업 처리 중 오류: {str(e)}")
             return False
-
+        
     async def _count_discount_rows(self, page: Page) -> int:
         """현재 할인내역 테이블의 행 수 계산"""
         try:
