@@ -186,25 +186,26 @@ class BStoreCrawler(BaseCrawler):
             self.logger.log_warning(f"[경고] 팝업 처리 중 오류 (무시하고 계속): {str(e)}")
 
     async def _ensure_search_state_checkbox(self, page: Page):
-        """검색 상태 유지 체크박스 확인 및 활성화 (ID 직접 지정 방식으로 수정)"""
+        """
+        검색 상태 유지 체크박스 확인 및 활성화 (타이밍 문제 해결을 위해 명시적 대기 추가)
+        """
+        checkbox_selector = '#checkSaveId'
         try:
-            # 우리가 HTML에서 확인한 고유 ID '#checkSaveId'를 직접 사용합니다.
-            checkbox_selector = '#checkSaveId'
+            # [수정] 체크박스가 나타날 때까지 최대 5초간 기다립니다.
+            await page.wait_for_selector(checkbox_selector, state='visible', timeout=5000)
+            
             checkbox_element = page.locator(checkbox_selector)
-
-            if await checkbox_element.count() > 0:
-                if not await checkbox_element.is_checked():
-                    # 체크되어 있지 않으면 체크합니다.
-                    await checkbox_element.check()
-                    self.logger.log_info("[성공] 검색 상태 유지 체크박스 활성화 완료")
-                else:
-                    self.logger.log_info("[정보] 검색 상태 유지 체크박스 이미 활성화됨")
+            
+            if not await checkbox_element.is_checked():
+                # 체크되어 있지 않으면 체크합니다.
+                await checkbox_element.check()
+                self.logger.log_info("[성공] 검색 상태 유지 체크박스 활성화 완료")
             else:
-                # ID로도 체크박스를 찾을 수 없는 경우 경고를 남깁니다.
-                self.logger.log_warning("[경고] 검색 상태 유지 체크박스를 찾을 수 없음 (ID: #checkSaveId)")
+                self.logger.log_info("[정보] 검색 상태 유지 체크박스 이미 활성화됨")
                 
         except Exception as e:
-            self.logger.log_warning(f"[경고] 검색 상태 유지 체크박스 처리 중 오류: {str(e)}")
+            # 5초를 기다려도 체크박스를 찾지 못하면 경고를 남깁니다.
+            self.logger.log_warning(f"[경고] 검색 상태 유지 체크박스를 시간 내에 찾지 못함 (ID: {checkbox_selector}): {str(e)}")
 
     async def _send_no_vehicle_notification(self, car_number: str):
         """차량 검색 결과 없음 알림"""
