@@ -185,7 +185,7 @@ class BStoreCrawler(BaseCrawler):
 
     async def _ensure_search_state_checkbox(self, page: Page):
         """검색 상태 유지 체크박스 확인 및 활성화 (안정화 버전)"""
-        checkbox_selector = '#checkSaveId'
+        checkbox_selector = '#checkSaveID'
         try:
             # 체크박스가 나타날 때까지 최대 5초간 기다립니다.
             await page.wait_for_selector(checkbox_selector, state='visible', timeout=5000)
