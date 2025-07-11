@@ -124,7 +124,7 @@ jobs:
       with:
         payload: |
           {
-            "text": ":rocket: *AWS Lambda 배포 결과 알림*\n*함수명*: `${{ env.FUNCTION_NAME }}`\n*최종상태*: `${{ env.STATUS }}`\n*리전*: `${{ env.REGION }}`\n*이미지*: `${{ env.IMAGE_NAME }}`\n*GitHub Workflow*: <https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|여기서 자세히 보기>"
+            "text": ":rocket: *AWS Lambda 배포 결과 알림*\n*결과*: `${{ env.STATUS }}`\n함수명: `${{ env.FUNCTION_NAME }}`\n리전: `${{ env.REGION }}`\n이미지: `${{ env.IMAGE_NAME }}`\n*GitHub Workflow*: <https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|여기서 자세히 보기>"
           }
       env:
         SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
