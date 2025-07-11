@@ -1,11 +1,11 @@
 """
-B 매장 크롤러 - 실행 순서 및 안정성 개선된 최종 버전
+B 매장 크롤러 - 새 탭(팝업) 처리 및 안정성 극대화 최종 버전
 """
 import asyncio
 import re
-import logging
-from typing import Dict, List, Optional, Tuple
-from playwright.async_api import Page, Browser, Playwright, async_playwright
+from typing import Dict, List, Optional
+
+from playwright.async_api import Page
 
 from infrastructure.web_automation.base_crawler import BaseCrawler
 from core.domain.models.vehicle import Vehicle
@@ -14,7 +14,7 @@ from utils.optimized_logger import OptimizedLogger, ErrorCode
 
 
 class BStoreCrawler(BaseCrawler):
-    """B 매장 전용 크롤러 - 실행 순서 및 안정성 개선된 최종 버전"""
+    """B 매장 전용 크롤러 - 새 탭(팝업) 처리 및 안정성 극대화 최종 버전"""
     
     def __init__(self, store_config, playwright_config, structured_logger, notification_service=None):
         super().__init__(store_config, playwright_config, structured_logger)
@@ -24,7 +24,7 @@ class BStoreCrawler(BaseCrawler):
         self.logger = OptimizedLogger("b_store_crawler", "B")
     
     async def login(self, vehicle: Vehicle = None) -> bool:
-        """B 매장 로그인 및 팝업 처리"""
+        """B 매장 로그인 (새 탭/팝업 자동 전환 처리)"""
         try:
             await self._initialize_browser()
             
@@ -34,31 +34,39 @@ class BStoreCrawler(BaseCrawler):
             username_input = self.page.get_by_role('textbox', name='ID')
             password_input = self.page.get_by_role('textbox', name='PASSWORD')
             login_button = self.page.get_by_role('button', name='Submit')
+
+            # [핵심 수정] 로그인 클릭으로 새 탭이 열릴 것을 예상하고 기다립니다.
+            async with self.context.expect_page() as new_page_info:
+                await login_button.click()
             
-            await username_input.fill(self.store_config.login_username)
-            await password_input.fill(self.store_config.login_password)
-            await login_button.click()
+            # 새로 열린 탭(페이지) 객체를 가져옵니다.
+            new_page = await new_page_info.value
+            self.logger.log_info("[정보] 새 탭 또는 팝업창이 감지되었습니다.")
             
-            # [수정] 로그인 성공의 핵심 지표인 '차량번호' 입력란이 나타날 때까지 명시적으로 기다립니다.
-            # 이렇게 하면 페이지가 다음 작업을 위해 완전히 준비되었음을 보장할 수 있습니다.
+            # [핵심 수정] 크롤러의 제어권을 기존 페이지에서 새로 열린 페이지로 완전히 전환합니다.
+            self.page = new_page
+            
+            # 새 페이지가 완전히 로드될 때까지 기다립니다.
+            await self.page.wait_for_load_state('networkidle')
+
+            # 이제 새 페이지에서 '차량번호' 입력란이 보일 때까지 기다립니다.
             await self.page.get_by_role('textbox', name='차량번호').wait_for(state='visible', timeout=15000)
             
-            self.logger.log_info("[성공] B 매장 로그인 및 차량 검색 페이지 로드 완료")
+            self.logger.log_info("[성공] B 매장 로그인 및 새 탭으로 제어권 전환 완료")
             
-            # 팝업 처리 로직은 로그인 직후 바로 실행합니다.
+            # 팝업 처리 로직은 새 탭에서 실행합니다.
             await self._handle_popups(self.page)
             
-            # [수정] 체크박스 확인 로직은 이 함수의 책임이 아니므로 search_vehicle 함수로 이동했습니다.
             return True
             
         except Exception as e:
-            self.logger.log_error(ErrorCode.FAIL_AUTH, "로그인", f"로그인 또는 페이지 로드 실패: {str(e)}")
+            self.logger.log_error(ErrorCode.FAIL_AUTH, "로그인", f"로그인 또는 새 탭 전환 실패: {str(e)}")
             return False
 
     async def search_vehicle(self, vehicle: Vehicle) -> bool:
         """차량 검색 (체크박스 확인 로직 포함)"""
         try:
-            # [수정] 차량 검색을 시작하기 전에, 검색 기능의 일부인 체크박스 상태를 먼저 확인합니다.
+            # 차량 검색을 시작하기 전에, 검색 기능의 일부인 체크박스 상태를 먼저 확인합니다.
             await self._ensure_search_state_checkbox(self.page)
 
             car_number = vehicle.number
@@ -103,6 +111,26 @@ class BStoreCrawler(BaseCrawler):
             self.logger.log_error(ErrorCode.FAIL_SEARCH, "차량검색", str(e))
             return False
 
+    async def _ensure_search_state_checkbox(self, page: Page):
+        """검색 상태 유지 체크박스 확인 및 활성화"""
+        checkbox_selector = '#checkSaveId'
+        try:
+            # 체크박스가 나타날 때까지 최대 5초간 기다립니다.
+            await page.wait_for_selector(checkbox_selector, state='visible', timeout=5000)
+            
+            checkbox_element = page.locator(checkbox_selector)
+            
+            if not await checkbox_element.is_checked():
+                await checkbox_element.check()
+                self.logger.log_info("[성공] 검색 상태 유지 체크박스 활성화 완료")
+            else:
+                self.logger.log_info("[정보] 검색 상태 유지 체크박스 이미 활성화됨")
+                
+        except Exception as e:
+            self.logger.log_warning(f"[경고] 검색 상태 유지 체크박스를 시간 내에 찾지 못함 (ID: {checkbox_selector}): {str(e)}")
+            
+    # 나머지 함수들 (get_coupon_history, apply_coupons 등)은 변경할 필요가 없습니다.
+    # ... (이하 기존 코드와 동일) ...
     async def get_coupon_history(self, vehicle: Vehicle) -> CouponHistory:
         """쿠폰 이력 조회 - B 매장 전용 구현"""
         try:
@@ -181,27 +209,6 @@ class BStoreCrawler(BaseCrawler):
         except Exception:
             # 팝업이 없으면 그냥 통과
             self.logger.log_info("[정보] 처리할 팝업이 없음")
-
-
-    async def _ensure_search_state_checkbox(self, page: Page):
-        """검색 상태 유지 체크박스 확인 및 활성화 (안정화 버전)"""
-        checkbox_selector = '#checkSaveId'
-        try:
-            # 체크박스가 나타날 때까지 최대 5초간 기다립니다.
-            await page.wait_for_selector(checkbox_selector, state='visible', timeout=5000)
-            
-            checkbox_element = page.locator(checkbox_selector)
-            
-            if not await checkbox_element.is_checked():
-                await checkbox_element.check()
-                self.logger.log_info("[성공] 검색 상태 유지 체크박스 활성화 완료")
-            else:
-                self.logger.log_info("[정보] 검색 상태 유지 체크박스 이미 활성화됨")
-                
-        except Exception as e:
-            # 5초를 기다려도 체크박스를 찾지 못하면 경고를 남깁니다.
-            self.logger.log_warning(f"[경고] 검색 상태 유지 체크박스를 시간 내에 찾지 못함 (ID: {checkbox_selector}): {str(e)}")
-
 
     async def _send_no_vehicle_notification(self, car_number: str):
         """차량 검색 결과 없음 알림"""
@@ -324,7 +331,6 @@ class BStoreCrawler(BaseCrawler):
             self.logger.log_warning("[경고] 알림 팝업을 찾지 못했지만 계속 진행")
             return True
 
-
     async def _count_discount_rows(self, page: Page) -> int:
         """현재 할인내역 테이블의 행 수 계산"""
         try:
@@ -339,3 +345,4 @@ class BStoreCrawler(BaseCrawler):
             if await self._count_discount_rows(page) > previous_count:
                 return True
         return False
+
