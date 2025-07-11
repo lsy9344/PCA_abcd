@@ -1,11 +1,11 @@
 """
-AWS Lambda 핸들러
+AWS Lambda 핸들러 - HTTP 응답 코드 수정된 버전
 """
 import json
 import asyncio
 from typing import Dict, Any
 
-from core.application.dto.automation_dto import AutomationRequest
+from core.application.dto.automation_dto import AutomationRequest, AutomationResponse
 from infrastructure.config.config_manager import ConfigManager
 from infrastructure.factories.automation_factory import AutomationFactory
 
@@ -35,9 +35,10 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         store_id = body.get('store_id') or event.get('store_id')
         vehicle_number = body.get('vehicle_number') or event.get('vehicle_number')
         
+        # ✅ 수정: 파라미터 누락도 비즈니스 실패(422)로 처리
         if not store_id or not vehicle_number:
             return {
-                'statusCode': 400,
+                'statusCode': 422,
                 'body': json.dumps({
                     'success': False,
                     'error': 'store_id와 vehicle_number는 필수 파라미터입니다'
@@ -50,11 +51,18 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             vehicle_number=vehicle_number
         )
         
-        # 비동기 실행을 위한 이벤트 루프 생성
-        response = asyncio.run(execute_automation(request))
+        response: AutomationResponse = asyncio.run(execute_automation(request))
         
+        # ✅ 수정: response.success 값에 따라 상태 코드를 명확히 분기
+        if response.success:
+            # 성공 시: 200 OK
+            status_code = 200
+        else:
+            # 비즈니스 로직 실패 시: 422 Unprocessable Entity
+            status_code = 422
+            
         return {
-            'statusCode': 200 if response.success else 500,
+            'statusCode': status_code,
             'body': json.dumps({
                 'success': response.success,
                 'request_id': response.request_id,
@@ -67,18 +75,19 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         }
         
     except Exception as e:
+        # ✅ 수정: 예상치 못한 서버 장애 시에만 500 Internal Server Error 반환
         return {
             'statusCode': 500,
             'body': json.dumps({
                 'success': False,
-                'error': f'Lambda 핸들러 오류: {str(e)}'
+                'error': f'Lambda 핸들러에서 예상치 못한 오류가 발생했습니다: {str(e)}'
             }, ensure_ascii=False)
         }
 
 
-async def execute_automation(request: AutomationRequest):
+async def execute_automation(request: AutomationRequest) -> AutomationResponse:
     """자동화 실행"""
     factory = get_automation_factory()
     use_case = factory.create_apply_coupon_use_case(request.store_id)
     
-    return await use_case.execute(request) 
+    return await use_case.execute(request)
