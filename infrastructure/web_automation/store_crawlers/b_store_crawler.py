@@ -1,5 +1,5 @@
 """
-B 매장 크롤러 - 테스트용 날짜 설정 로직 제거된 최종 버전
+B 매장 크롤러 - 실행 순서 및 안정성 개선된 최종 버전
 """
 import asyncio
 import re
@@ -14,7 +14,7 @@ from utils.optimized_logger import OptimizedLogger, ErrorCode
 
 
 class BStoreCrawler(BaseCrawler):
-    """B 매장 전용 크롤러 - 테스트용 날짜 설정 로직 제거된 최종 버전"""
+    """B 매장 전용 크롤러 - 실행 순서 및 안정성 개선된 최종 버전"""
     
     def __init__(self, store_config, playwright_config, structured_logger, notification_service=None):
         super().__init__(store_config, playwright_config, structured_logger)
@@ -24,7 +24,7 @@ class BStoreCrawler(BaseCrawler):
         self.logger = OptimizedLogger("b_store_crawler", "B")
     
     async def login(self, vehicle: Vehicle = None) -> bool:
-        """B 매장 로그인"""
+        """B 매장 로그인 및 팝업 처리"""
         try:
             await self._initialize_browser()
             
@@ -39,35 +39,31 @@ class BStoreCrawler(BaseCrawler):
             await password_input.fill(self.store_config.login_password)
             await login_button.click()
             
-            await self.page.wait_for_timeout(3000)
+            # [수정] 로그인 성공의 핵심 지표인 '차량번호' 입력란이 나타날 때까지 명시적으로 기다립니다.
+            # 이렇게 하면 페이지가 다음 작업을 위해 완전히 준비되었음을 보장할 수 있습니다.
+            await self.page.get_by_role('textbox', name='차량번호').wait_for(state='visible', timeout=15000)
             
-            success_indicator = self.page.locator('text=사용자')
-            if await success_indicator.count() > 0:
-                self.logger.log_info("[성공] B 매장 로그인 성공")
-                
-                await self._handle_popups(self.page)
-                await self._ensure_search_state_checkbox(self.page)
-                
-                # ✅ 테스트용 날짜 설정 로직과 그 호출을 완전히 제거했습니다.
-                
-                return True
-            else:
-                self.logger.log_error(ErrorCode.FAIL_AUTH, "로그인", "성공 지표를 찾을 수 없음")
-                return False
-                
+            self.logger.log_info("[성공] B 매장 로그인 및 차량 검색 페이지 로드 완료")
+            
+            # 팝업 처리 로직은 로그인 직후 바로 실행합니다.
+            await self._handle_popups(self.page)
+            
+            # [수정] 체크박스 확인 로직은 이 함수의 책임이 아니므로 search_vehicle 함수로 이동했습니다.
+            return True
+            
         except Exception as e:
-            self.logger.log_error(ErrorCode.FAIL_AUTH, "로그인", str(e))
+            self.logger.log_error(ErrorCode.FAIL_AUTH, "로그인", f"로그인 또는 페이지 로드 실패: {str(e)}")
             return False
 
     async def search_vehicle(self, vehicle: Vehicle) -> bool:
-        """차량 검색"""
+        """차량 검색 (체크박스 확인 로직 포함)"""
         try:
+            # [수정] 차량 검색을 시작하기 전에, 검색 기능의 일부인 체크박스 상태를 먼저 확인합니다.
+            await self._ensure_search_state_checkbox(self.page)
+
             car_number = vehicle.number
             
             car_input = self.page.get_by_role('textbox', name='차량번호')
-            if await car_input.count() == 0:
-                raise Exception("차량번호 입력란을 찾을 수 없음")
-            
             await car_input.fill(car_number)
             
             search_button = self.page.get_by_role('button', name='검색')
@@ -175,29 +171,28 @@ class BStoreCrawler(BaseCrawler):
     async def _handle_popups(self, page: Page):
         """팝업 처리"""
         try:
-            notice_popup = page.locator('text=안내')
-            if await notice_popup.count() > 0:
-                ok_button = page.locator('text=OK')
-                if await ok_button.count() > 0:
-                    await ok_button.click()
-                    await page.wait_for_timeout(1000)
-                    self.logger.log_info("[성공] 안내 팝업 처리 완료")
-        except Exception as e:
-            self.logger.log_warning(f"[경고] 팝업 처리 중 오류 (무시하고 계속): {str(e)}")
+            # 팝업이 나타날 때까지 짧게 기다림
+            await page.locator('text=안내').wait_for(state='visible', timeout=2000)
+            ok_button = page.locator('text=OK')
+            if await ok_button.count() > 0:
+                await ok_button.click()
+                await page.wait_for_timeout(1000)
+                self.logger.log_info("[성공] 안내 팝업 처리 완료")
+        except Exception:
+            # 팝업이 없으면 그냥 통과
+            self.logger.log_info("[정보] 처리할 팝업이 없음")
+
 
     async def _ensure_search_state_checkbox(self, page: Page):
-        """
-        검색 상태 유지 체크박스 확인 및 활성화 (타이밍 문제 해결을 위해 명시적 대기 추가)
-        """
+        """검색 상태 유지 체크박스 확인 및 활성화 (안정화 버전)"""
         checkbox_selector = '#checkSaveId'
         try:
-            # [수정] 체크박스가 나타날 때까지 최대 5초간 기다립니다.
+            # 체크박스가 나타날 때까지 최대 5초간 기다립니다.
             await page.wait_for_selector(checkbox_selector, state='visible', timeout=5000)
             
             checkbox_element = page.locator(checkbox_selector)
             
             if not await checkbox_element.is_checked():
-                # 체크되어 있지 않으면 체크합니다.
                 await checkbox_element.check()
                 self.logger.log_info("[성공] 검색 상태 유지 체크박스 활성화 완료")
             else:
@@ -206,6 +201,7 @@ class BStoreCrawler(BaseCrawler):
         except Exception as e:
             # 5초를 기다려도 체크박스를 찾지 못하면 경고를 남깁니다.
             self.logger.log_warning(f"[경고] 검색 상태 유지 체크박스를 시간 내에 찾지 못함 (ID: {checkbox_selector}): {str(e)}")
+
 
     async def _send_no_vehicle_notification(self, car_number: str):
         """차량 검색 결과 없음 알림"""
@@ -316,28 +312,19 @@ class BStoreCrawler(BaseCrawler):
             return False
 
     async def _handle_apply_popups_without_navigation(self, page: Page) -> bool:
-        """쿠폰 적용 후 팝업 처리"""
+        """쿠폰 적용 후 팝업 처리 (안정화 버전)"""
         try:
-            # 3초 동안 팝업이 나타나는지 반복 확인
-            for _ in range(6): 
-                popup_title = page.locator('h3:has-text("알림")')
-                if await popup_title.count() > 0:
-                    # ❗수정된 부분: 'button'을 'a'로 변경하여 <a> 태그를 찾도록 수정
-                    ok_button = page.locator('.modal-buttons a:has-text("OK")')
-                    
-                    if await ok_button.count() > 0:
-                        await ok_button.click()
-                        self.logger.log_info("[성공] 쿠폰 적용 알림 팝업 처리 완료")
-                        return True
-                await page.wait_for_timeout(500)
-                
+            # '알림' 팝업의 'OK' 버튼을 직접 기다립니다.
+            ok_button = page.locator('.modal-buttons a:has-text("OK")')
+            await ok_button.wait_for(state='visible', timeout=3000)
+            await ok_button.click()
+            self.logger.log_info("[성공] 쿠폰 적용 알림 팝업 처리 완료")
+            return True
+        except Exception:
             self.logger.log_warning("[경고] 알림 팝업을 찾지 못했지만 계속 진행")
             return True
-            
-        except Exception as e:
-            self.logger.log_warning(f"[경고] 쿠폰 적용 팝업 처리 중 오류: {str(e)}")
-            return False
-        
+
+
     async def _count_discount_rows(self, page: Page) -> int:
         """현재 할인내역 테이블의 행 수 계산"""
         try:
