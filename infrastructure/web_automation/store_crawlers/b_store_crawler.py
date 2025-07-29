@@ -8,12 +8,13 @@ from typing import Dict, List, Optional, Tuple
 from playwright.async_api import Page, Browser, Playwright, async_playwright
 
 from infrastructure.web_automation.base_crawler import BaseCrawler
+from core.domain.repositories.store_repository import StoreRepository
 from core.domain.models.vehicle import Vehicle
 from core.domain.models.coupon import CouponHistory, CouponApplication
 from utils.optimized_logger import OptimizedLogger, ErrorCode
 
 
-class BStoreCrawler(BaseCrawler):
+class BStoreCrawler(BaseCrawler, StoreRepository):
     """B 매장 전용 크롤러 - 실행 순서 및 안정성 개선된 최종 버전"""
     
     def __init__(self, store_config, playwright_config, structured_logger, notification_service=None):
@@ -339,3 +340,7 @@ class BStoreCrawler(BaseCrawler):
             if await self._count_discount_rows(page) > previous_count:
                 return True
         return False
+
+    async def cleanup(self) -> None:
+        """리소스 정리 - StoreRepository 인터페이스 구현"""
+        await super().cleanup()

@@ -1,0 +1,71 @@
+# D매장 설정
+store:
+  id: "D"
+  name: "D매장"
+  website_url: "https://npdc-i.nicepark.co.kr"
+  
+login:
+  username: "nad35101"
+  password: "dabi4318!"
+
+# 쿠폰 타입 매핑 (D 매장 - 기본 패턴 추정, 실제 테스트 후 조정 필요)
+coupons:
+  FREE_1HOUR:
+    name: "무료 1시간할인"
+    type: "free"
+    duration_minutes: 60
+    priority: 0
+  PAID_30MIN:
+    name: "유료 30분할인"
+    type: "paid"
+    duration_minutes: 30
+    priority: 1
+  PAID_1HOUR:
+    name: "유료 1시간할인"
+    type: "paid"
+    duration_minutes: 60
+    priority: 2
+
+# 할인 정책
+discount_policy:
+  weekday:
+    target_hours: 3
+    max_coupons: 6
+  weekend:
+    target_hours: 2
+    max_coupons: 4
+
+# 웹 셀렉터 (초기 추정값 - 실제 테스트 후 조정 필요)
+selectors:
+  # 로그인 관련
+  login:
+    username_input: "#loginId"
+    password_input: "#loginPw"
+    login_button: "#loginBtn"
+    car_number_input: "#carNumber"
+  
+  # 팝업 처리
+  popups:
+    notice_popup: ".modal"
+    ok_button: ".btn-confirm"
+    close_button: ".btn-close"
+  
+  # 차량 검색
+  search:
+    car_number_input: "#carNumber"
+    search_button: "#searchBtn"
+    no_result_message: 'text=검색된 차량이 없습니다'
+    search_result_table: "#vehicleList"
+  
+  # 쿠폰 관련
+  coupons:
+    coupon_list: "#couponList"
+    coupon_rows: "#couponList tr"
+    apply_button: ".btn-apply"
+    discount_history: "#discountHistory"
+    
+  # 페이지 URL (추정)
+  urls:
+    login: "/login"
+    main: "/main"
+    coupon: "/coupon"

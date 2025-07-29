@@ -1,0 +1,72 @@
+# C매장 설정
+store:
+  id: "C"
+  name: "C매장"
+  website_url: "http://g048.gparking.kr"
+  
+login:
+  username: "1024"
+  password: "1211"
+
+# 쿠폰 타입 매핑 (C 매장 - 기본 패턴 추정, 실제 테스트 후 조정 필요)
+coupons:
+  FREE_1HOUR:
+    name: "무료 1시간할인"
+    type: "free"
+    duration_minutes: 60
+    priority: 0
+  PAID_30MIN:
+    name: "유료 30분할인"
+    type: "paid"
+    duration_minutes: 30
+    priority: 1
+  PAID_1HOUR:
+    name: "유료 1시간할인"
+    type: "paid"
+    duration_minutes: 60
+    priority: 2
+
+# 할인 정책
+discount_policy:
+  weekday:
+    target_hours: 3
+    max_coupons: 6
+  weekend:
+    target_hours: 2
+    max_coupons: 4
+
+# 웹 셀렉터 (스크린샷 확인 후 업데이트)
+selectors:
+  # 로그인 관련
+  login:
+    username_input: "#user_id"
+    password_input: "#pwd"
+    login_button: ".btn"
+    car_number_input: "input[placeholder='차량번호 2자리 이상을 입력하세요']"
+  
+  # 팝업 처리
+  popups:
+    notice_popup: ".popup"
+    ok_button: ".popup-ok"
+    close_button: ".popup-close"
+  
+  # 차량 검색
+  search:
+    car_number_input: "input[placeholder='차량번호 2자리 이상을 입력하세요']"
+    search_button: ".btn:has-text('차량조회')"
+    no_result_message: 'text=검색된 차량이 없습니다'
+    search_result_table: "#tableID"  # 스크린샷에서 확인된 실제 테이블 ID (camelCase)
+    vehicle_click_selector: "td:has-text('{car_number}')"  # 차량번호 클릭 셀렉터
+  
+  # 쿠폰 관련
+  coupons:
+    coupon_list: "#couponList"
+    coupon_rows: "#couponList tr"
+    apply_button: ".apply-btn"
+    discount_history: "#discountHistory"
+    
+  # 페이지 URL (추정)
+  urls:
+    login: "/login"
+    main: "/main"
+    coupon: "/coupon"

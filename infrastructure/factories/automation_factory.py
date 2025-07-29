@@ -12,6 +12,8 @@ from infrastructure.notifications.notification_service import NotificationServic
 from infrastructure.notifications.telegram_adapter import TelegramAdapter
 from infrastructure.web_automation.store_crawlers.a_store_crawler import AStoreCrawler
 from infrastructure.web_automation.store_crawlers.b_store_crawler import BStoreCrawler
+from infrastructure.web_automation.store_crawlers.c_store_crawler import CStoreCrawler
+from infrastructure.web_automation.store_crawlers.d_store_crawler import DStoreCrawler
 from core.domain.models.b_discount_calculator import BDiscountCalculator
 from shared.exceptions.automation_exceptions import StoreNotSupportedException
 
@@ -49,10 +51,14 @@ class AutomationFactory:
         notification_service = self.create_notification_service()
 
         if store_id.upper() == "A":
-            # ✅ 수정: AStoreCrawler에도 notification_service를 전달
+            # [수정] AStoreCrawler에도 notification_service를 전달
             return AStoreCrawler(store_config, playwright_config, logger, notification_service)
         elif store_id.upper() == "B":
             return BStoreCrawler(store_config, playwright_config, logger, notification_service)
+        elif store_id.upper() == "C":
+            return CStoreCrawler(store_config, playwright_config, logger, notification_service)
+        elif store_id.upper() == "D":
+            return DStoreCrawler(store_config, playwright_config, logger, notification_service)
         else:
             raise StoreNotSupportedException(f"지원하지 않는 매장입니다: {store_id}")    
 

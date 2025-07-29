@@ -156,21 +156,20 @@ def decide_coupon_to_apply(my_history, total_history, discount_types, is_weekday
     -   '현재 보유 쿠폰', '우리 매장 적용 쿠폰', '전체 적용 쿠폰' 정보를 가져오는 웹 페이지의 **구조(HTML Selector)는 매장마다 다르다.**
     -   따라서, 이 정보를 크롤링하는 로직은 각 매장의 `get_coupon_history` 메서드 내에서 개별적으로 구현되어야 한다.
 
-## 2. 쿠폰 적용 조건 (BaseDiscountRule의 역할)
+## 2. 쿠폰 적용 조건 (DiscountCalculator의 역할)
 
--   **공통 적용 조건**: 모든 매장에서 공통적으로 적용되는 기본 조건은 `BaseDiscountRule`에 정의된다.
+-   **공통 적용 조건**: 모든 매장에서 공통적으로 적용되는 기본 조건은 `DiscountCalculator`에 정의된다.
     -   평일: **총 3시간** 할인을 목표로 쿠폰을 조합한다.
     -   주말/공휴일: **총 2시간** 할인을 목표로 쿠폰을 조합한다.
     -   **무료 쿠폰 우선**: 타 매장에서 무료 쿠폰을 이미 사용했다면, 우리 매장에서는 적용하지 않는다. (`total_history` 기준)
     -   **주말 쿠폰 fallback**: 주말에 WEEKEND 타입 쿠폰이 없으면 PAID 타입 쿠폰을 사용한다.
 
-## 3. 매장별 쿠폰 적용 로직 (각 매장 DiscountRule의 역할)
+## 3. 매장별 쿠폰 적용 로직
 
--   `decide_coupon_to_apply` 메서드는 `BaseDiscountRule`로부터 상속받아 각 매장의 특성에 맞게 **오버라이딩(재정의)** 되어야 한다.
+### 3.1. A 매장 로직 (DiscountCalculator 사용)
 
-### 3.1. A 매장 로직 예시 (`ADiscountRule`)
-
--   **사용 쿠폰**: '1시간 무료 쿠폰', '1시간 유료 쿠폰', '1시간 주말 쿠폰'
+-   **사용 쿠폰**: '30분할인권(무료)', '1시간할인권(유료)', '1시간주말할인권(유료)'
+-   **구현**: `DiscountCalculator`가 `a_store_config.yaml`의 쿠폰 설정을 기반으로 계산
 -   **적용 규칙**:
     -   **평일 (3시간)**:
         1.  `무료 1시간` 1개 적용 (단, 전체 매장에서 사용 이력 없을 시)
@@ -178,12 +177,11 @@ def decide_coupon_to_apply(my_history, total_history, discount_types, is_weekday
     -   **주말 (2시간)**:
         1.  `무료 1시간` 1개 적용 (단, 전체 매장에서 사용 이력 없을 시)
         2.  부족한 시간(1시간)은 `주말 1시간` 1개로 채운다.
--   **특수 조건**: A 매장은 하루에 적용 가능한 총 쿠폰 개수에 제한이 있다. (`MAX_WEEKDAY_COUPONS`, `MAX_WEEKEND_COUPONS`)
-    -   기본 규칙으로 계산된 쿠폰 수가 이 제한을 초과할 경우, `ADiscountRule`에서 개수를 조정한다.
 
-### 3.2. B 매장 로직 예시 (`BDiscountRule`)
+### 3.2. B 매장 로직 (BDiscountCalculator 사용)
 
 -   **사용 쿠폰**: '무료 1시간할인', '유료 30분할인' (주말 전용 쿠폰 없음)
+-   **구현**: `BDiscountCalculator`가 30분 쿠폰의 2배 보정을 처리
 -   **적용 규칙**:
     -   **평일 (3시간)**:
         1.  `무료 1시간` 1개 적용 (단, 전체 매장에서 사용 이력 없을 시)
@@ -193,18 +191,18 @@ def decide_coupon_to_apply(my_history, total_history, discount_types, is_weekday
         2.  부족한 시간(1시간)은 `유료 30분할인` 2개로 채운다. (30분×2 = 1시간)
         3.  **🔥 중요**: B 매장은 주말 전용 쿠폰이 없으므로 평일 쿠폰(PAID)를 사용
 -   **특수 조건**: 
-    -   B 매장의 유료 쿠폰은 30분 단위이므로 시간 계산 시 2배 보정 필요
+    -   B 매장의 유료 쿠폰은 30분 단위이므로 `BDiscountCalculator`에서 2배 보정 처리
     -   무료 쿠폰은 항상 보유되어 있음 (크롤링에서 999개로 설정)
     -   주말에도 평일 쿠폰(PAID 타입)을 사용하므로 fallback 로직 적용
 
 ## 4. 로직 실행 흐름
 
-1.  **`AStore.run()` 실행**: 자동화 시작
-2.  `AStore.get_coupon_history()` 호출:
+1.  **UseCase 실행**: `ApplyCouponUseCase.execute()` 호출로 자동화 시작
+2.  `AStoreCrawler.get_coupon_history()` 호출:
     -   A 매장 사이트의 HTML 구조에 맞춰 **보유/우리매장/전체 쿠폰 이력**을 크롤링하여 반환한다.
-3.  `ADiscountRule.decide_coupon_to_apply()` 호출:
-    -   `get_coupon_history`에서 받은 이력과 `config.py`의 쿠폰 설정을 바탕으로 **A 매장 규칙에 따라** 적용할 쿠폰과 개수를 결정한다.
-4.  `AStore.apply_coupons()` 호출:
+3.  `DiscountCalculator.calculate_required_coupons()` 호출:
+    -   `get_coupon_history`에서 받은 이력과 `a_store_config.yaml`의 쿠폰 설정을 바탕으로 **A 매장 규칙에 따라** 적용할 쿠폰과 개수를 결정한다.
+4.  `AStoreCrawler.apply_coupons()` 호출:
     -   결정된 쿠폰을 웹사이트에서 실제로 적용한다.
 
 ---

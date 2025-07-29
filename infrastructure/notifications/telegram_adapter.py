@@ -29,7 +29,7 @@ class TelegramAdapter(NotificationService):
     
     async def send_success_notification(self, message: str, store_id: str) -> bool:
         """성공 알림 전송"""
-        formatted_message = f"✅ [{store_id}매장] {message}"
+        formatted_message = f"[성공] [{store_id}매장] {message}"
         return await self._send_message(formatted_message)
     
     async def _send_message(self, message: str) -> bool:

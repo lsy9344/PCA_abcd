@@ -1,16 +1,15 @@
 """
 매장 라우터 - store_id에 따라 적절한 매장 클래스를 반환
+현재는 A 매장만 지원 (B 매장은 Factory 패턴 사용)
 """
 from typing import Type
 from .base_store import BaseStore
 from .a_store import AStore
-# 매장 클래스 임포트
-from core.domain.stores.b_store import BStore
 
-# 매장 ID와 클래스 매핑
+# 매장 ID와 클래스 매핑 (A 매장만)
 STORE_CLASSES = {
     "A": AStore,
-    "B": BStore,
+    # B 매장은 AutomationFactory.create_store_repository() 사용
 }
 
 def get_store_class(store_id: str) -> Type[BaseStore]:

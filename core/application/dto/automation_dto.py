@@ -54,7 +54,7 @@ class ErrorContext:
         # Lambda의 UTC 시간에 9시간을 더해 한국 시간(KST)으로 변환합니다.
         kst_time = self.error_time + timedelta(hours=9)
         
-        message = "🚨 쿠폰 자동화 실패 알림 🚨\n\n"
+        message = "[실패] 쿠폰 자동화 실패 알림 [실패]\n\n"
         message += f"1. 실패 원인: [{self.error_step}] {self.error_message}\n"
         if self.vehicle_number:
             message += f"2. 실패 차량번호: {self.vehicle_number}\n"

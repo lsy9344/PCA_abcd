@@ -213,7 +213,7 @@ class DiscountCalculator:
         print(f"\n[최종확인] 현재 적용된 시간: {total_current_hours:.1f}시간")
         print(f"[최종확인] 추가 적용할 시간: {total_apply_hours:.1f}시간")
         print(f"[최종확인] 적용 후 총시간: {final_total_hours:.1f}시간")
-        print(f"[최종확인] {period_type} 목표달성: {'✅ 달성' if final_total_hours >= target_hours else '❌ 미달성'}")
+        print(f"[최종확인] {period_type} 목표달성: {'[성공] 달성' if final_total_hours >= target_hours else '[실패] 미달성'}")
         print(f"{'='*60}\n")
         
         return [app for app in applications if app.is_valid()] 

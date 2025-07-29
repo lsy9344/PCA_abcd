@@ -81,10 +81,10 @@ class BaseCrawler:
             self.page.set_default_timeout(30000)
             self.page.set_default_navigation_timeout(30000)
             
-            print("✅ Browser initialized successfully using Playwright's default path.")
+            print("[성공] Browser initialized successfully using Playwright's default path.")
             
         except Exception as e:
-            print(f"❌ Browser initialization failed: {str(e)}")
+            print(f"[실패] Browser initialization failed: {str(e)}")
             await self.cleanup()
             raise RuntimeError(f"Failed to initialize browser: {str(e)}")
 
@@ -100,7 +100,7 @@ class BaseCrawler:
             if self.playwright:
                 await self.playwright.stop()
         except Exception as e:
-            print(f"⚠️ Cleanup warning: {str(e)}")
+            print(f"[경고] Cleanup warning: {str(e)}")
 
     async def __aenter__(self):
         await self._initialize_browser()

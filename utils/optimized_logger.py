@@ -155,7 +155,7 @@ class ErrorContext:
     
     def get_telegram_message(self) -> str:
         """텔레그램 알림용 메시지 생성"""
-        return f"""🚨 쿠폰 자동화 실패 🚨
+        return f"""[실패] 쿠폰 자동화 실패 [실패]
 
 매장: {self.store_name}
 차량: {self.car_number}

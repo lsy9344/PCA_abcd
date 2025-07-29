@@ -150,7 +150,7 @@ class AStoreCrawler(BaseCrawler):
             details = self.logger.log_error("A", "차량검색", "FAIL_SEARCH", str(e))
             return False
 
-    # 🚨 여기를 수정했습니다.
+    # [수정] 여기를 수정했습니다.
     async def get_coupon_history(self, vehicle: Vehicle) -> CouponHistory:
         """쿠폰 이력 조회"""
         try:

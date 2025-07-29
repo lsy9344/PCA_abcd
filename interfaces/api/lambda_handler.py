@@ -35,7 +35,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         store_id = body.get('store_id') or event.get('store_id')
         vehicle_number = body.get('vehicle_number') or event.get('vehicle_number')
         
-        # ✅ 수정: 파라미터 누락도 비즈니스 실패(422)로 처리
+        # [수정] 파라미터 누락도 비즈니스 실패(422)로 처리
         if not store_id or not vehicle_number:
             return {
                 'statusCode': 422,
@@ -53,7 +53,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         
         response: AutomationResponse = asyncio.run(execute_automation(request))
         
-        # ✅ 수정: response.success 값에 따라 상태 코드를 명확히 분기
+        # [수정] response.success 값에 따라 상태 코드를 명확히 분기
         if response.success:
             # 성공 시: 200 OK
             status_code = 200
@@ -75,7 +75,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         }
         
     except Exception as e:
-        # ✅ 수정: 예상치 못한 서버 장애 시에만 500 Internal Server Error 반환
+        # [수정] 예상치 못한 서버 장애 시에만 500 Internal Server Error 반환
         return {
             'statusCode': 500,
             'body': json.dumps({

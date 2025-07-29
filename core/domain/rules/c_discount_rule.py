@@ -1,35 +1,33 @@
 """
-B 매장 할인 규칙 - 단순화된 버전 (BDiscountCalculator 사용 권장)
-
-이 파일은 레거시 호환성을 위해 유지되지만, 
-새로운 구현에서는 BDiscountCalculator를 직접 사용해주세요.
+C 매장 할인 규칙
+- FREE_1HOUR: 무료 1시간할인 (기본 쿠폰)
+- PAID_30MIN: 유료 30분할인 (평일 기준)
+- PAID_1HOUR: 유료 1시간할인 (평일 기준)
 """
 from typing import Dict
 import logging
-from core.domain.models.b_discount_calculator import BDiscountCalculator
-from core.domain.models.discount_policy import DiscountPolicy, CouponRule
+from core.domain.models.discount_policy import DiscountCalculator, DiscountPolicy, CouponRule
 
 
-class BDiscountRule:
-    """B 매장 할인 규칙 - BDiscountCalculator로 위임"""
+class CDiscountRule:
+    """C 매장 할인 규칙"""
     
     def __init__(self):
         self.logger = logging.getLogger(__name__)
-        # BDiscountCalculator 인스턴스 생성
-        policy = DiscountPolicy(store_id="B")
+        # C 매장용 DiscountCalculator 인스턴스 생성
+        policy = DiscountPolicy(store_id="C")
         coupon_rules = [
             CouponRule("FREE_1HOUR", "무료 1시간할인", "free", 60, 0),
-            CouponRule("PAID_30MIN", "유료 30분할인", "paid", 30, 1)
+            CouponRule("PAID_30MIN", "유료 30분할인", "paid", 30, 1),
+            CouponRule("PAID_1HOUR", "유료 1시간할인", "paid", 60, 2)
         ]
-        self.calculator = BDiscountCalculator(policy, coupon_rules)
+        self.calculator = DiscountCalculator(policy, coupon_rules)
         
-        # 레거시 호환성을 위한 쿠폰 타입 정의
+        # C 매장 쿠폰 타입 정의 (config 파일과 매칭)
         self.coupon_types = {
-            'FREE_30MIN': '무료 30분할인',
             'FREE_1HOUR': '무료 1시간할인',
             'PAID_30MIN': '유료 30분할인', 
-            'PAID_1HOUR': '유료 1시간할인',
-            'PAID_24HOUR': '유료 24시간할인'
+            'PAID_1HOUR': '유료 1시간할인'
         }
     
     def decide_coupon_to_apply(
@@ -39,11 +37,11 @@ class BDiscountRule:
         discount_info: Dict[str, int]
     ) -> Dict[str, int]:
         """
-        레거시 호환성을 위한 메서드 - BDiscountCalculator로 위임
+        C 매장 쿠폰 적용 개수 결정
         
         Args:
             my_history: 우리 매장 할인 내역
-            total_history: 전체 할인 내역  
+            total_history: 전체 할인 내역
             discount_info: 보유 쿠폰 정보
         
         Returns:
@@ -56,7 +54,7 @@ class BDiscountRule:
             today = datetime.now()
             is_weekday = today.weekday() < 5
             
-            # BDiscountCalculator로 계산 위임
+            # DiscountCalculator로 계산
             applications = self.calculator.calculate_required_coupons(
                 my_history=my_history,
                 total_history=total_history,
@@ -65,37 +63,33 @@ class BDiscountRule:
             )
             
             # 레거시 형식으로 변환
-            result = {'FREE_1HOUR': 0, 'PAID_30MIN': 0}
+            result = {'FREE_1HOUR': 0, 'PAID_30MIN': 0, 'PAID_1HOUR': 0}
             for app in applications:
-                if 'FREE_1HOUR' in app.coupon_name or '무료 1시간' in app.coupon_name:
+                if '무료' in app.coupon_name and '1시간' in app.coupon_name:
                     result['FREE_1HOUR'] = app.count
-                elif 'PAID_30MIN' in app.coupon_name or '유료 30분' in app.coupon_name:
+                elif '유료' in app.coupon_name and '30분' in app.coupon_name:
                     result['PAID_30MIN'] = app.count
+                elif '유료' in app.coupon_name and '1시간' in app.coupon_name:
+                    result['PAID_1HOUR'] = app.count
             
-            self.logger.info(f"[최종] B 매장 쿠폰 적용 계획: {result}")
+            self.logger.info(f"[최종] C 매장 쿠폰 적용 계획: {result}")
             return result
             
         except Exception as e:
-            self.logger.error(f"[실패] B 매장 쿠폰 적용 계산 중 오류: {str(e)}")
-            return {'FREE_1HOUR': 0, 'PAID_30MIN': 0}
+            self.logger.error(f"[실패] C 매장 쿠폰 적용 계산 중 오류: {str(e)}")
+            return {'FREE_1HOUR': 0, 'PAID_30MIN': 0, 'PAID_1HOUR': 0}
     
     def _calculate_current_discount(self, my_history: Dict[str, int]) -> int:
-        """레거시 호환성을 위한 메서드 - 현재 적용된 할인 시간 계산 (분 단위)"""
+        """현재 적용된 할인 시간 계산 (분 단위)"""
         total_minutes = 0
         
         # 각 쿠폰 타입별 할인 시간 계산
         for coupon_type, count in my_history.items():
-            if coupon_type == 'FREE_30MIN':
-                total_minutes += count * 30
-            elif coupon_type == 'FREE_1HOUR':
+            if coupon_type == 'FREE_1HOUR' or coupon_type == 'PAID_1HOUR':
                 total_minutes += count * 60
             elif coupon_type == 'PAID_30MIN':
                 total_minutes += count * 30
-            elif coupon_type == 'PAID_1HOUR':
-                total_minutes += count * 60
-            elif coupon_type == 'PAID_24HOUR':
-                total_minutes += count * 24 * 60
             else:
                 self.logger.warning(f"[경고] 알 수 없는 쿠폰 타입: {coupon_type}")
         
-        return total_minutes 
+        return total_minutes
