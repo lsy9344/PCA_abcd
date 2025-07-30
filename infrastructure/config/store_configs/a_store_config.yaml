@@ -8,32 +8,28 @@ login:
   username: "dtctrit2704"
   password: "dtctrit2704"
 
-# 쿠폰 타입 매핑
+# 쿠폰 설정 - 시간 독립적 설계 (4_discount_logic.mdc 기반)
 coupons:
-  FREE_1HOUR:
+  FREE_COUPON:
     name: "30분할인권(무료)"
-    type: "free"
+    type: "FREE"
     duration_minutes: 60
     priority: 0
-  PAID_1HOUR:
+  PAID_COUPON:
     name: "1시간할인권(유료)"
-    type: "paid"
+    type: "PAID"
     duration_minutes: 60
     priority: 1
-  WEEKEND_1HOUR:
+  WEEKEND_COUPON:
     name: "1시간주말할인권(유료)"
-    type: "weekend"
+    type: "WEEKEND"
     duration_minutes: 60
     priority: 2
 
-# 할인 정책
-discount_policy:
-  weekday:
-    target_hours: 3
-    max_coupons: 3
-  weekend:
-    target_hours: 2
-    max_coupons: 2
+# 할인 정책 - 시간 기반 (분 단위)
+policy:
+  weekday_target_minutes: 180  # 3시간
+  weekend_target_minutes: 120  # 2시간
 
 # 웹 셀렉터
 selectors:

@@ -17,6 +17,42 @@ alwaysApply: false
 
 ---
 
+## [핵심 설계 원칙 - 동적 설정 기반 접근법]
+
+> **⚠️ 중요**: 매장마다 쿠폰 이름과 시간이 다르므로, 하드코딩된 시간 값이나 특정 쿠폰명에 의존하지 않는 범용적 설계가 필수입니다.
+
+### 설계 철학
+1. **시간 독립적 설계**: "1시간 무료쿠폰", "2시간 무료쿠폰" 등 특정 시간에 의존하지 않음
+2. **타입 기반 분류**: 쿠폰을 FREE, PAID, WEEKEND 타입으로 분류하여 시간과 분리
+3. **설정 기반 계산**: 각 매장의 yaml 설정에서 쿠폰별 `duration_minutes` 값을 읽어 동적 계산
+4. **확장성 보장**: 새로운 매장 추가 시 코드 변경 없이 설정 파일만 추가
+
+### 기존 방식의 문제점
+```python
+# ❌ 잘못된 접근 (하드코딩)
+if coupon_name == "1시간무료쿠폰":
+    apply_hours = 1
+elif coupon_name == "2시간무료쿠폰":
+    apply_hours = 2
+
+# ❌ 고정된 계산
+total_needed = 3  # 항상 3시간으로 고정
+free_apply = 1    # 항상 1개로 고정
+```
+
+### 개선된 방식
+```python
+# ✅ 올바른 접근 (설정 기반)
+coupon_duration_minutes = coupon_config.duration_minutes
+apply_hours = coupon_duration_minutes / 60.0
+
+# ✅ 동적 계산
+target_minutes = policy.get_target_minutes(is_weekday)
+required_count = math.ceil(remaining_minutes / coupon_duration_minutes)
+```
+
+---
+
 ## [쿠폰 종류 관리 – 공통 설정 구조 예시]
 
 > **쿠폰 종류, 쿠폰명(코드명)은 반드시 매장(사이트)별 공통 설정 파일에 관리한다!**
@@ -30,27 +66,90 @@ alwaysApply: false
 
 ---
 
-예시: 매장/사이트별 분기
+### 개선된 매장별 설정 구조 (시간 독립적)
+
+```python
+# 각 매장의 yaml 설정 파일 기반 구조
 STORE_CONFIGS = {
     "A": {
         "WEBSITE_URL": "...",
-        "DISCOUNT_TYPES": {
-            "무료1시간쿠폰": "30분할인권(무료)",
-            "평일1시간쿠폰": "1시간할인권(유료)",
-            "주말1시간쿠폰": "1시간주말할인권(유료)"
+        "COUPONS": {
+            "FREE_COUPON": {
+                "name": "30분할인권(무료)",
+                "type": "FREE",
+                "duration_minutes": 60,  # 실제로는 1시간
+                "priority": 0
+            },
+            "PAID_COUPON": {
+                "name": "1시간할인권(유료)",
+                "type": "PAID", 
+                "duration_minutes": 60,
+                "priority": 1
+            },
+            "WEEKEND_COUPON": {
+                "name": "1시간주말할인권(유료)",
+                "type": "WEEKEND",
+                "duration_minutes": 60,
+                "priority": 2
+            }
         },
-        # 기타 설정...
+        "POLICY": {
+            "weekday_target_minutes": 180,  # 3시간
+            "weekend_target_minutes": 120   # 2시간
+        }
     },
     "B": {
         "WEBSITE_URL": "...",
-        "DISCOUNT_TYPES": {
-            "FREE_1HOUR": "1시간할인권(무료)",
-            "PAID_1HOUR": "1시간할인권(유료)",
-            "WEEKEND_1HOUR": "1시간주말할인권(유료)"  # B 매장은 주말 전용 쿠폰 없음
+        "COUPONS": {
+            "FREE_COUPON": {
+                "name": "1시간할인권(무료)",
+                "type": "FREE",
+                "duration_minutes": 60,
+                "priority": 0
+            },
+            "PAID_COUPON": {
+                "name": "1시간할인권(유료)",
+                "type": "PAID",
+                "duration_minutes": 30,  # B매장은 30분 단위
+                "priority": 1
+            }
+            # B매장은 WEEKEND_COUPON 없음 → PAID로 fallback
         },
+        "POLICY": {
+            "weekday_target_minutes": 180,
+            "weekend_target_minutes": 120
+        }
     },
-    # ...
+    "C": {
+        "WEBSITE_URL": "...",
+        "COUPONS": {
+            "FREE_COUPON": {
+                "name": "무료 2시간할인",
+                "type": "FREE",
+                "duration_minutes": 120,  # C매장은 2시간 무료
+                "priority": 0
+            },
+            "PAID_COUPON": {
+                "name": "1시간 유료할인권",
+                "type": "PAID",
+                "duration_minutes": 60,
+                "priority": 1
+            }
+            # C매장은 WEEKEND_COUPON 없음 → PAID로 fallback
+        },
+        "POLICY": {
+            "weekday_target_minutes": 180,
+            "weekend_target_minutes": 120
+        }
+    }
 }
+```
+
+### 핵심 개선사항
+1. **시간 분리**: 쿠폰 이름에서 시간 정보 제거, `duration_minutes`로 분리
+2. **타입 기반**: FREE, PAID, WEEKEND 타입으로 분류
+3. **동적 목표**: `weekday_target_minutes`, `weekend_target_minutes`로 목표 시간 설정
+4. **우선순위**: `priority`로 적용 순서 관리
 실제 비즈니스 로직에서는 DISCOUNT_TYPES의 key만 참조
 ex) DISCOUNT_TYPES["FREE_1HOUR"]
 
@@ -74,62 +173,206 @@ ex) DISCOUNT_TYPES["FREE_1HOUR"]
 나머지 1시간은 유료 주말 쿠폰(WEEKEND_1HOUR) 
 **📌 중요: 주말 전용 쿠폰이 없으면 평일 쿠폰(PAID_1HOUR) 사용**
 
-3. **주말 쿠폰 fallback 규칙** (A, B 매장 공통)
+3. **주말 쿠폰 fallback 규칙** (A, B, C 매장 공통)
 - 주말에 WEEKEND 타입 쿠폰이 있으면 해당 쿠폰 사용
 - 주말에 WEEKEND 타입 쿠폰이 없으면 PAID 타입 쿠폰으로 대체
-- 이는 B 매장과 같이 주말 전용 쿠폰이 없는 매장에 필수
+- 이는 B, C 매장과 같이 주말 전용 쿠폰이 없는 매장에 필수
 
-[로직 구현(실전 예시, 쿠폰명 분리)]
-def decide_coupon_to_apply(my_history, total_history, discount_types, is_weekday):
+## [범용 할인권 계산 알고리즘 - 시간 독립적]
+
+### 동적 계산 함수 (개선된 버전)
+
+```python
+def calculate_dynamic_coupons(
+    target_minutes: int,           # 목표 시간 (분 단위)
+    coupon_configs: List[CouponConfig],  # 매장별 쿠폰 설정
+    my_history: Dict[str, int],    # 매장별 사용 이력
+    total_history: Dict[str, int], # 전체 무료 쿠폰 이력
+    is_weekday: bool
+) -> Dict[str, int]:
     """
-    my_history: 매장별 할인권 사용 이력 (쿠폰명→사용횟수 dict)
-    total_history: 전체 무료 쿠폰 사용 이력 (쿠폰명→사용횟수 dict)
-    discount_types: {'FREE_1HOUR': str, 'PAID_1HOUR': str, 'WEEKEND_1HOUR': str}
-    is_weekday: 평일(True)/주말(False)
+    설정 기반 동적 쿠폰 계산 알고리즘
+    - 매장마다 다른 쿠폰 시간에 대응
+    - 새로운 쿠폰 타입 추가 시 코드 변경 불필요
     """
-    free_key = discount_types['FREE_1HOUR']
-    paid_key = discount_types['PAID_1HOUR']
-    weekend_key = discount_types.get('WEEKEND_1HOUR', paid_key)  # fallback to PAID
+    applications = {}
+    remaining_minutes = target_minutes
+    
+    # 현재 적용된 시간 계산
+    current_minutes = 0
+    for config in coupon_configs:
+        used_count = my_history.get(config.coupon_key, 0)
+        current_minutes += used_count * config.duration_minutes
+    
+    remaining_minutes = max(0, target_minutes - current_minutes)
+    
+    if remaining_minutes == 0:
+        return applications  # 이미 목표 달성
+    
+    # 1단계: 무료 쿠폰 우선 적용
+    free_coupons = [c for c in coupon_configs if c.coupon_type == 'FREE']
+    for config in sorted(free_coupons, key=lambda x: x.priority):
+        # 전체 이력에서 무료 쿠폰 사용 여부 확인
+        total_free_used = total_history.get(config.coupon_key, 0)
+        my_free_used = my_history.get(config.coupon_key, 0)
+        
+        if total_free_used > 0:
+            continue  # 이미 다른 매장에서 사용됨
+        
+        # 무료 쿠폰 적용 가능한 개수 계산
+        free_needed_count = min(
+            math.ceil(remaining_minutes / config.duration_minutes),
+            1 - my_free_used  # 무료 쿠폰은 보통 1개 제한
+        )
+        
+        if free_needed_count > 0:
+            applications[config.coupon_key] = free_needed_count
+            remaining_minutes -= free_needed_count * config.duration_minutes
+            remaining_minutes = max(0, remaining_minutes)
+    
+    # 2단계: 유료/주말 쿠폰으로 남은 시간 채우기
+    if remaining_minutes > 0:
+        # 평일/주말에 따른 쿠폰 타입 선택
+        if is_weekday:
+            target_types = ['PAID']
+        else:
+            # 주말: WEEKEND 우선, 없으면 PAID 사용
+            weekend_coupons = [c for c in coupon_configs if c.coupon_type == 'WEEKEND']
+            target_types = ['WEEKEND'] if weekend_coupons else ['PAID']
+        
+        for coupon_type in target_types:
+            type_coupons = [c for c in coupon_configs if c.coupon_type == coupon_type]
+            
+            for config in sorted(type_coupons, key=lambda x: x.priority):
+                if remaining_minutes <= 0:
+                    break
+                
+                # 필요한 쿠폰 개수 계산 (올림)
+                needed_count = math.ceil(remaining_minutes / config.duration_minutes)
+                
+                if needed_count > 0:
+                    applications[config.coupon_key] = needed_count
+                    remaining_minutes -= needed_count * config.duration_minutes
+                    remaining_minutes = max(0, remaining_minutes)
+    
+    return applications
 
-    total_free_used = total_history.get(free_key, 0)
-    my_free = my_history.get(free_key, 0)
-    my_paid = my_history.get(paid_key, 0)
-    my_weekend = my_history.get(weekend_key, 0)
 
-    if is_weekday:
-        total_needed = 3
-        free_apply = 0 if total_free_used > 0 else max(0, 1 - my_free)
-        paid_apply = total_needed - (my_paid + free_apply)
-        return {
-            free_key: free_apply,
-            paid_key: max(0, paid_apply),
-            weekend_key: 0
-        }
-    else:
-        total_needed = 2
-        free_apply = 0 if total_free_used > 0 else max(0, 1 - my_free)
-        # 주말에는 weekend_key 사용 (WEEKEND 없으면 PAID로 fallback)
-        weekend_apply = total_needed - (my_weekend + free_apply)
-        return {
-            free_key: free_apply,
-            paid_key: 0 if weekend_key != paid_key else max(0, weekend_apply),
-            weekend_key: max(0, weekend_apply) if weekend_key != paid_key else 0
-        }
+def validate_coupon_application(applications: Dict[str, int], 
+                              coupon_configs: List[CouponConfig],
+                              target_minutes: int) -> bool:
+    """계산 결과 검증"""
+    total_applied_minutes = 0
+    
+    for coupon_key, count in applications.items():
+        config = next((c for c in coupon_configs if c.coupon_key == coupon_key), None)
+        if config:
+            total_applied_minutes += count * config.duration_minutes
+    
+    return total_applied_minutes >= target_minutes
+```
+
+### 기존 방식 vs 개선된 방식 비교
+
+```python
+# ❌ 기존: 하드코딩된 방식
+def old_decide_coupon(is_weekday):
+    total_needed = 3 if is_weekday else 2  # 하드코딩
+    free_apply = 1  # 항상 1개 고정
+    paid_apply = total_needed - free_apply  # 1시간 쿠폰 가정
+    
+# ✅ 개선: 설정 기반 방식  
+def new_calculate_coupon(target_minutes, coupon_configs):
+    # 목표 시간과 쿠폰 설정에 따라 동적 계산
+    remaining = target_minutes
+    for config in coupon_configs:
+        needed = math.ceil(remaining / config.duration_minutes)
+        # ... 동적 계산 로직
+```
 
 ---
 
-[실제 적용 결과 예시 – 각 매장별로 다르게 적용 가능]
-매장 A: "무료1시간쿠폰", "평일1시간쿠폰", "주말1시간쿠폰"
+## [동적 계산 결과 예시 - 설정 기반 접근법]
 
-매장 B: "1시간할인권(무료)", "1시간할인권(유료)" (주말도 유료 쿠폰 사용)
+### 매장별 실제 계산 시나리오
 
-→ 비즈니스 로직은 오직 key(예: FREE_1HOUR)만 사용 →
-각 매장에서는 실제 이름만 바꿔서 관리!
+#### A 매장 (평일 180분 목표)
+```python
+# A 매장 설정
+coupons = [
+    CouponConfig("FREE_COUPON", "30분할인권(무료)", "FREE", 60, 0),
+    CouponConfig("PAID_COUPON", "1시간할인권(유료)", "PAID", 60, 1),
+    CouponConfig("WEEKEND_COUPON", "1시간주말할인권(유료)", "WEEKEND", 60, 2)
+]
 
-[최종 적용 결과 출력 포맷(예시)]
-"무료1시간쿠폰: 1개 / 평일1시간쿠폰: 2개 / 주말1시간쿠폰: 0개"
+# 계산 결과
+result = calculate_dynamic_coupons(180, coupons, {}, {}, True)
+# → {"FREE_COUPON": 1, "PAID_COUPON": 2}
+# → 총 180분 (60분 + 120분) 달성
+```
 
-"1시간할인권(무료): 1개 / 1시간할인권(유료): 2개 / 1시간주말할인권(유료): 0개"
+#### B 매장 (평일 180분 목표, 30분 단위 유료쿠폰)
+```python
+# B 매장 설정  
+coupons = [
+    CouponConfig("FREE_COUPON", "1시간할인권(무료)", "FREE", 60, 0),
+    CouponConfig("PAID_COUPON", "1시간할인권(유료)", "PAID", 30, 1)  # 30분 단위
+]
+
+# 계산 결과
+result = calculate_dynamic_coupons(180, coupons, {}, {}, True) 
+# → {"FREE_COUPON": 1, "PAID_COUPON": 4}
+# → 총 180분 (60분 + 120분) 달성, 30분×4개 = 120분
+```
+
+#### C 매장 (평일 180분 목표, 2시간 무료쿠폰)
+```python
+# C 매장 설정
+coupons = [
+    CouponConfig("FREE_COUPON", "무료 2시간할인", "FREE", 120, 0),  # 2시간
+    CouponConfig("PAID_COUPON", "1시간 유료할인권", "PAID", 60, 1)
+]
+
+# 계산 결과 (평일)
+result = calculate_dynamic_coupons(180, coupons, {}, {}, True)
+# → {"FREE_COUPON": 1, "PAID_COUPON": 1} 
+# → 총 180분 (120분 + 60분) 달성
+
+# 계산 결과 (주말 120분 목표)
+result = calculate_dynamic_coupons(120, coupons, {}, {}, False)
+# → {"FREE_COUPON": 1}
+# → 총 120분 (120분) 달성, 추가 쿠폰 불필요
+```
+
+### 확장성 시나리오 예시
+
+#### 새로운 D 매장 추가 (3시간 무료쿠폰)
+```python
+# D 매장 설정 (새로운 매장, 특수한 쿠폰 시간)
+coupons = [
+    CouponConfig("FREE_COUPON", "3시간무료쿠폰", "FREE", 180, 0),  # 3시간 무료!
+    CouponConfig("PAID_COUPON", "45분유료쿠폰", "PAID", 45, 1)     # 45분 단위
+]
+
+# 평일 계산 (180분 목표)
+result = calculate_dynamic_coupons(180, coupons, {}, {}, True)
+# → {"FREE_COUPON": 1}
+# → 총 180분 달성, 무료쿠폰 하나로 완료!
+
+# 주말 계산 (120분 목표)  
+result = calculate_dynamic_coupons(120, coupons, {}, {}, False)
+# → {"FREE_COUPON": 1}
+# → 120분 목표이지만 3시간 무료쿠폰 하나로 초과 달성
+```
+
+### 핵심 장점
+
+1. **코드 변경 없음**: D 매장 추가 시 설정 파일만 추가, 알고리즘은 그대로 사용
+2. **임의 시간 지원**: 45분, 90분, 150분 등 어떤 시간의 쿠폰도 처리 가능  
+3. **자동 최적화**: 목표 시간을 최소 개수의 쿠폰으로 달성하도록 자동 계산
+4. **검증 기능**: `validate_coupon_application`으로 계산 결과 검증 가능
+
+→ **새로운 매장/쿠폰 추가 시 yaml 설정만 변경하면 모든 로직이 자동 대응!**
 
 [정리/주의]
 쿠폰명/코드명은 반드시 config에서 불러와야 함
@@ -140,7 +383,7 @@ def decide_coupon_to_apply(my_history, total_history, discount_types, is_weekday
 
 파싱/출력/적용 모두 config 기반으로 동작
 
-**📌 주말 쿠폰 fallback: WEEKEND 없으면 PAID 사용 (모든 매장 공통)**
+**📌 주말 쿠폰 fallback: WEEKEND 없으면 PAID 사용 (B, C 매장과 같이 주말할인권이 없는 매장에 적용)**
 
 # 4. 할인권 적용 규칙 상세 로직
 
@@ -150,7 +393,7 @@ def decide_coupon_to_apply(my_history, total_history, discount_types, is_weekday
 2.  **규칙 상속**: 모든 할인 규칙 클래스는 `BaseDiscountRule`을 상속받아 기본 구조(평일/주말 구분 등)를 공유하되, 세부 로직은 각자 구현한다.
 3.  **쿠폰 종류의 가변성**:
     -   매장마다 사용하는 쿠폰의 **종류와 명칭이 다르다.**
-    -   예: A 매장은 '1시간 무료', '30분 유료' / B 매장은 '1시간 유료', '주말 1시간'
+    -   예: A 매장은 '1시간 무료', '1시간 유료' / B 매장은 '1시간 유료', '30분 유료' / C 매장은 '2시간 무료', '1시간 유료'
     -   이는 `config.py`의 `STORE_CONFIGS`에 매장별로 명확히 정의되어야 한다.
 4.  **사이트별 크롤링 차이**:
     -   '현재 보유 쿠폰', '우리 매장 적용 쿠폰', '전체 적용 쿠폰' 정보를 가져오는 웹 페이지의 **구조(HTML Selector)는 매장마다 다르다.**
@@ -195,8 +438,26 @@ def decide_coupon_to_apply(my_history, total_history, discount_types, is_weekday
     -   무료 쿠폰은 항상 보유되어 있음 (크롤링에서 999개로 설정)
     -   주말에도 평일 쿠폰(PAID 타입)을 사용하므로 fallback 로직 적용
 
+### 3.3. C 매장 로직 (DiscountCalculator 사용)
+
+-   **사용 쿠폰**: '무료 2시간할인', '1시간 유료할인권' (주말 전용 쿠폰 없음)
+-   **구현**: `DiscountCalculator`가 `c_store_config.yaml`의 쿠폰 설정을 기반으로 계산
+-   **적용 규칙**:
+    -   **평일 (3시간)**:
+        1.  `무료 2시간할인` 1개 적용 (단, 전체 매장에서 사용 이력 없을 시) **⭐ C 매장 특징: 무료 쿠폰이 2시간**
+        2.  부족한 시간(1시간)은 `1시간 유료할인권` 1개로 채운다.
+    -   **주말 (2시간)**:
+        1.  `무료 2시간할인` 1개 적용 (단, 전체 매장에서 사용 이력 없을 시) **⭐ C 매장 특징: 무료 쿠폰이 2시간**
+        2.  부족한 시간이 없으므로 추가 쿠폰 불필요 (2시간 목표 달성)
+        3.  **🔥 중요**: C 매장은 주말 전용 쿠폰이 없으므로 평일 쿠폰(PAID)를 사용 (B 매장과 동일)
+-   **특수 조건**:
+    -   C 매장의 무료 쿠폰은 2시간이므로 다른 매장과 다른 계산 로직 필요
+    -   주말에는 무료 쿠폰만으로 2시간 목표를 달성할 수 있음
+    -   주말 전용 쿠폰이 없으므로 fallback 로직 적용 (B 매장과 동일)
+
 ## 4. 로직 실행 흐름
 
+### 4.1. A 매장 실행 흐름
 1.  **UseCase 실행**: `ApplyCouponUseCase.execute()` 호출로 자동화 시작
 2.  `AStoreCrawler.get_coupon_history()` 호출:
     -   A 매장 사이트의 HTML 구조에 맞춰 **보유/우리매장/전체 쿠폰 이력**을 크롤링하여 반환한다.
@@ -204,6 +465,56 @@ def decide_coupon_to_apply(my_history, total_history, discount_types, is_weekday
     -   `get_coupon_history`에서 받은 이력과 `a_store_config.yaml`의 쿠폰 설정을 바탕으로 **A 매장 규칙에 따라** 적용할 쿠폰과 개수를 결정한다.
 4.  `AStoreCrawler.apply_coupons()` 호출:
     -   결정된 쿠폰을 웹사이트에서 실제로 적용한다.
+
+### 4.2. C 매장 실행 흐름
+1.  **UseCase 실행**: `ApplyCouponUseCase.execute()` 호출로 자동화 시작
+2.  `CStoreCrawler.get_coupon_history()` 호출:
+    -   C 매장 사이트의 HTML 구조에 맞춰 **보유/우리매장/전체 쿠폰 이력**을 크롤링하여 반환한다.
+3.  `DiscountCalculator.calculate_required_coupons()` 호출:
+    -   `get_coupon_history`에서 받은 이력과 `c_store_config.yaml`의 쿠폰 설정을 바탕으로 **C 매장 규칙에 따라** 적용할 쿠폰과 개수를 결정한다.
+    -   **⭐ 중요**: C 매장은 무료 쿠폰이 2시간이므로 A 매장과 다른 계산 결과를 보임
+4.  `CStoreCrawler.apply_coupons()` 호출:
+    -   결정된 쿠폰을 웹사이트에서 실제로 적용한다.
+
+---
+
+## [결론 - 확장 가능한 아키텍처]
+
+### 기존 방식의 한계점 해결
+1. **❌ 하드코딩된 시간**: "1시간", "2시간" 등 고정값 → **✅ duration_minutes 설정 기반**
+2. **❌ 매장별 특수 케이스**: A매장/C매장 각각 다른 로직 → **✅ 범용 알고리즘**
+3. **❌ 코드 대대적 수정**: 새 매장 추가마다 개발 → **✅ yaml 설정만 추가**
+
+### 새로운 매장 추가 프로세스 
+```yaml
+# 새로운 E 매장 추가 시 (예: 90분 무료, 15분 유료 쿠폰)
+# e_store_config.yaml 생성만 하면 완료!
+coupons:
+  FREE_COUPON:
+    name: "90분무료할인"
+    type: "FREE"
+    duration_minutes: 90  # 어떤 시간이든 가능
+    priority: 0
+  PAID_COUPON:
+    name: "15분유료쿠폰" 
+    type: "PAID"
+    duration_minutes: 15  # 15분 단위도 가능
+    priority: 1
+```
+
+### 확장성 보장
+- **새로운 쿠폰 시간**: 10분, 45분, 90분, 4시간 등 자유롭게 설정 가능
+- **새로운 쿠폰 타입**: PREMIUM, WEEKEND_PREMIUM 등 타입 추가 시 설정만 변경
+- **새로운 정책**: 목표 시간 변경(4시간, 5시간 등) 시 설정만 변경
+- **코드 안정성**: 알고리즘 변경 없이 무한히 매장 확장 가능
+
+### 개발자 가이드라인
+1. **새 매장 추가**: yaml 설정 파일 생성 → 크롤러 구현 → 완료
+2. **쿠폰 시간 변경**: yaml의 duration_minutes 값만 수정
+3. **비즈니스 규칙 변경**: 목표 시간, 우선순위 등은 설정으로 관리
+4. **코드 수정 금지**: calculate_dynamic_coupons 함수는 수정하지 말고 설정으로 해결
+
+**→ 이제 어떤 형태의 새로운 쿠폰이 생겨도 코드 변경 없이 설정만으로 대응 가능!**
 
 ---
 

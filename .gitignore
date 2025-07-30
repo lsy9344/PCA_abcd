@@ -2,3 +2,34 @@
 # Python virtual environment
 venv/
 .venv/
+
+# Logs
+logs/
+
+# Screenshots and debug files
+test_screenshots/
+debug_screenshots/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Development and testing files
+*.log
+debug_*.py
+test_*.py
+demo_*.py
+explore_*.py
+
+# MCP servers (external)
+mcp-servers/
+
+# Environment variables
+.env
+.env.local
+.env.production
+
+# macOS
+.DS_Store

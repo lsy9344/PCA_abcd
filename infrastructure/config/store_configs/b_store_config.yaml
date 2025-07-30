@@ -8,29 +8,25 @@ login:
   username: "215"
   password: "4318"
 
-# 쿠폰 타입 매핑 (실제 확인된 타입)
-# B 매장 특수사항: 주말 전용 쿠폰 없음, 무료 쿠폰 항상 보유
+# 쿠폰 설정 - 시간 독립적 설계 (4_discount_logic.mdc 기반)
+# B 매장 특징: 30분 단위 유료 쿠폰, 주말 전용 쿠폰 없음 (PAID로 fallback)
 coupons:
-  FREE_1HOUR:
+  FREE_COUPON:
     name: "무료 1시간할인"
-    type: "free"
+    type: "FREE"
     duration_minutes: 60
     priority: 0
-  PAID_30MIN:
+  PAID_COUPON:
     name: "유료 30분할인 (판매 : 300 )"
-    type: "paid"
-    duration_minutes: 30
+    type: "PAID"
+    duration_minutes: 30  # B매장 특징: 30분 단위
     priority: 1
-  # WEEKEND 타입 쿠폰 없음 - 주말에도 PAID 타입 사용
+  # WEEKEND 타입 쿠폰 없음 → 주말에도 PAID 타입 사용 (fallback)
 
-# 할인 정책
-discount_policy:
-  weekday:
-    target_hours: 3
-    max_coupons: 6
-  weekend:
-    target_hours: 2
-    max_coupons: 4
+# 할인 정책 - 시간 기반 (분 단위)
+policy:
+  weekday_target_minutes: 180  # 3시간
+  weekend_target_minutes: 120  # 2시간
 
 # 웹 셀렉터 (실제 테스트로 검증된 셀렉터)
 selectors:

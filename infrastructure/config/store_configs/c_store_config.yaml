@@ -3,37 +3,31 @@ store:
   id: "C"
   name: "C매장"
   website_url: "http://g048.gparking.kr"
-  
+
 login:
   username: "1024"
   password: "1211"
+  
+# 로그인 정보는 .env 파일에서 관리
+# C_STORE_USERNAME, C_STORE_PASSWORD 환경 변수 사용
 
-# 쿠폰 타입 매핑 (C 매장 - 기본 패턴 추정, 실제 테스트 후 조정 필요)
+# 쿠폰 설정 (디스카운트 로직 문서 기준)
 coupons:
-  FREE_1HOUR:
-    name: "무료 1시간할인"
-    type: "free"
-    duration_minutes: 60
+  FREE_2HOUR:
+    name: "무료 2시간할인"
+    type: "FREE"  # 대문자 표준화
+    duration_minutes: 120
     priority: 0
-  PAID_30MIN:
-    name: "유료 30분할인"
-    type: "paid"
-    duration_minutes: 30
-    priority: 1
   PAID_1HOUR:
-    name: "유료 1시간할인"
-    type: "paid"
+    name: "1시간 유료할인권"
+    type: "PAID"  # 대문자 표준화
     duration_minutes: 60
-    priority: 2
+    priority: 1
 
-# 할인 정책
-discount_policy:
-  weekday:
-    target_hours: 3
-    max_coupons: 6
-  weekend:
-    target_hours: 2
-    max_coupons: 4
+# 할인 정책 (분 단위로 표준화)
+policy:
+  weekday_target_minutes: 180  # 3시간 = 180분
+  weekend_target_minutes: 120  # 2시간 = 120분
 
 # 웹 셀렉터 (스크린샷 확인 후 업데이트)
 selectors:

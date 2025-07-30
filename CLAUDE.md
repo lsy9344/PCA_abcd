@@ -1,5 +1,7 @@
 # Development Partnership
 
+Talk to me in Korean.
+
 We're building production-quality code together. Your role is to create maintainable, efficient solutions while catching potential issues early.
 
 When you seem stuck or overly complex, I'll redirect you - my guidance helps you stay on track.
