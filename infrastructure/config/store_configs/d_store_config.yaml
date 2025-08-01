@@ -6,49 +6,45 @@ store:
   
 login:
   username: "nad35101"
-  password: "dabi4318!"
+  password: "DLTNDUF!1"
 
-# 쿠폰 타입 매핑 (D 매장 - 기본 패턴 추정, 실제 테스트 후 조정 필요)
+# 쿠폰 설정 - 시간 독립적 설계 (B매장과 동일)
+# D 매장 특징: 30분 단위 유료 쿠폰, 주말 전용 쿠폰 없음 (PAID로 fallback)
 coupons:
-  FREE_1HOUR:
-    name: "무료 1시간할인"
-    type: "free"
+  FREE_COUPON:
+    name: "1시간 무료"
+    type: "FREE"
     duration_minutes: 60
     priority: 0
-  PAID_30MIN:
-    name: "유료 30분할인"
-    type: "paid"
-    duration_minutes: 30
+  PAID_COUPON:
+    name: "30분 유료"
+    type: "PAID"
+    duration_minutes: 30  # D매장 특징: 30분 단위
     priority: 1
-  PAID_1HOUR:
-    name: "유료 1시간할인"
-    type: "paid"
-    duration_minutes: 60
-    priority: 2
+  # WEEKEND 타입 쿠폰 없음 → 주말에도 PAID 타입 사용 (fallback)
 
-# 할인 정책
-discount_policy:
-  weekday:
-    target_hours: 3
-    max_coupons: 6
-  weekend:
-    target_hours: 2
-    max_coupons: 4
+# 할인 정책 - 시간 기반 (분 단위)
+policy:
+  weekday_target_minutes: 180  # 3시간
+  weekend_target_minutes: 120  # 2시간
 
-# 웹 셀렉터 (초기 추정값 - 실제 테스트 후 조정 필요)
+# 웹 셀렉터 (실제 테스트로 확인된 값)
 selectors:
   # 로그인 관련
   login:
-    username_input: "#loginId"
-    password_input: "#loginPw"
-    login_button: "#loginBtn"
-    car_number_input: "#carNumber"
+    username_input: "#mf_wfm_body_ibx_empCd"
+    password_input: "#mf_wfm_body_sct_password"
+    login_button: "#mf_wfm_body_btn_login"
+    car_number_input: "input[type=\"text\"]"
   
-  # 팝업 처리
+  # 팝업 처리 (비밀번호 만료 등)
   popups:
+    password_expired_popup: "text=비밀번호가 만료되었습니다"
     notice_popup: ".modal"
-    ok_button: ".btn-confirm"
-    close_button: ".btn-close"
+    ok_button: "button:has-text('확인')"
+    close_button: "button:has-text('닫기')"
+    alert_ok: "button:has-text('OK')"
+    login_success_indicator: "text=차량번호 뒤 4자리"
   
   # 차량 검색
   search:

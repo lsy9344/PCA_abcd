@@ -59,17 +59,35 @@ class BaseCrawler:
                 '--window-size=1920,1080',
             ]
             
+            # playwright_config에서 UI 모드 설정 확인
+            headless_mode = self.playwright_config.get('headless', True)
+            slow_mo = self.playwright_config.get('slow_mo', 0)
+            custom_args = self.playwright_config.get('args', [])
+            
+            # UI 모드인 경우 일부 Lambda 최적화 옵션 제거
+            if not headless_mode:
+                browser_args = [arg for arg in browser_args if arg not in [
+                    '--single-process', '--no-zygote', '--disable-gpu'
+                ]]
+                browser_args.extend(custom_args)
+            
             # 브라우저 시작 (타임아웃 90초로 대폭 증가)
             self.browser = await self.playwright.chromium.launch(
-                headless=True,
+                headless=headless_mode,
+                slow_mo=slow_mo,
                 args=browser_args,
                 timeout=90000  # 60초 -> 90초로 타임아웃 증가
             )
             
+            # 컨텍스트 설정
+            viewport = self.playwright_config.get('viewport', {'width': 1920, 'height': 1080})
+            user_agent = self.playwright_config.get('user_agent', 
+                'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+            
             # 컨텍스트 생성
             self.context = await self.browser.new_context(
-                viewport={'width': 1920, 'height': 1080},
-                user_agent='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                viewport=viewport,
+                user_agent=user_agent,
                 ignore_https_errors=True,
                 java_script_enabled=True
             )
