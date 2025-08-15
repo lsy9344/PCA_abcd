@@ -1,9 +1,14 @@
 ---
-description: 
-globs: 
+title: "주요 시나리오 및 예외 케이스"
+order: 12
+category: "implementation"
 alwaysApply: true
+tags: ["scenarios", "workflow", "exceptions"]
+lastUpdated: "2024-01-15"
+description: "주차 할인권 자동화의 전체 동작 흐름과 예외 상황 처리"
 ---
-# 2. 주요 기능/업무 시나리오
+
+# 주요 기능/업무 시나리오
 
 이 문서는 주차 할인권 자동화 프로그램이 Playwright를 사용하여 어떻게 업무를 자동화하는지, 전체 동작 흐름과 각 단계를 설명합니다.
 
@@ -91,12 +96,6 @@ alwaysApply: true
 
 ---
 
-## (참고)
-- 각 단계는 Playwright의 `page.locator`, `page.click`, `page.fill`, `page.wait_for_selector` 등으로 제어
-- 셀렉터/테이블 구조, 쿠폰명 등은 docs/3_selectors.md에서 별도 관리
-
----
-
 ## 주요 시나리오 및 예외 케이스
 
 ## 1. 기본 정상 시나리오
@@ -159,4 +158,4 @@ alwaysApply: true
 
 ## (참고)
 - 각 단계는 Playwright의 `page.locator`, `page.click`, `page.fill`, `page.wait_for_selector` 등으로 제어
-- 셀렉터/테이블 구조, 쿠폰명 등은 docs/3_selectors.md에서 별도 관리
+- 셀렉터/테이블 구조, 쿠폰명 등은 20_selectors.mdc에서 별도 관리

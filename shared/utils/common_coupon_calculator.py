@@ -180,13 +180,41 @@ class CommonCouponCalculator:
                 .replace("2HOUR", "2시간"))
 
 
-# 매장별 설정 클래스
+# 매장별 설정 클래스 - DEPRECATED
 class StoreConfig:
-    """매장별 쿠폰 설정"""
+    """
+    매장별 쿠폰 설정 - DEPRECATED
+    
+    ⚠️ 이 클래스는 더 이상 사용되지 않습니다.
+    대신 infrastructure/config/config_manager.py의 ConfigManager를 사용하세요.
+    YAML 파일 기반 설정으로 완전히 이관되었습니다.
+    """
     
     @staticmethod
     def get_coupon_config(store_id: str) -> Dict:
-        """매장별 쿠폰 설정 반환"""
+        """
+        매장별 쿠폰 설정 반환 - DEPRECATED
+        
+        ⚠️ 이 메서드는 더 이상 사용되지 않습니다.
+        대신 YAML 설정 파일을 직접 사용하세요:
+        
+        # 올바른 사용법:
+        from pathlib import Path
+        import yaml
+        
+        config_path = Path("infrastructure/config/store_configs/{store_id.lower()}_store_config.yaml")
+        with open(config_path, 'r', encoding='utf-8') as f:
+            config = yaml.safe_load(f)
+        """
+        import warnings
+        warnings.warn(
+            "StoreConfig.get_coupon_config()는 deprecated됩니다. "
+            "대신 YAML 설정 파일을 직접 사용하세요.",
+            DeprecationWarning,
+            stacklevel=2
+        )
+        
+        # 기존 하드코딩된 설정 (하위 호환성을 위해 유지)
         configs = {
             "A": {
                 "coupon_key_mapping": {

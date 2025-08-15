@@ -1,15 +1,17 @@
-from abc import ABC
+from abc import ABC, abstractmethod
 from playwright.async_api import async_playwright, Browser, Page
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 import os
 import asyncio
 from playwright.async_api import async_playwright
 
 from core.domain.repositories.store_repository import StoreRepository
 from core.domain.models.store import StoreConfig
+from core.domain.models.vehicle import Vehicle
+from core.domain.models.coupon import CouponHistory, CouponApplication
 from infrastructure.logging.structured_logger import StructuredLogger
 
-class BaseCrawler:
+class BaseCrawler(ABC):
     def __init__(self, store_config, playwright_config, structured_logger):
         self.store_config = store_config
         self.playwright_config = playwright_config
@@ -163,3 +165,24 @@ class BaseCrawler:
             except:
                 continue
         return False
+
+    # 추상 메서드 정의 - 모든 매장 크롤러에서 구현해야 함
+    @abstractmethod
+    async def login(self, vehicle: Vehicle = None) -> bool:
+        """로그인 수행 - 매장별 구현 필요"""
+        pass
+    
+    @abstractmethod
+    async def search_vehicle(self, vehicle: Vehicle) -> bool:
+        """차량 검색 - 매장별 구현 필요"""
+        pass
+    
+    @abstractmethod
+    async def get_coupon_history(self, vehicle: Vehicle) -> CouponHistory:
+        """쿠폰 이력 조회 - 매장별 구현 필요"""
+        pass
+    
+    @abstractmethod
+    async def apply_coupons(self, applications: List[CouponApplication]) -> bool:
+        """쿠폰 적용 - 매장별 구현 필요"""
+        pass

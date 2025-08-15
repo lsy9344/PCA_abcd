@@ -5,7 +5,7 @@ import asyncio
 import os
 import re
 import yaml
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 from playwright.async_api import Page, TimeoutError
 from dotenv import load_dotenv
 
@@ -19,7 +19,7 @@ from utils.optimized_logger import OptimizedLogger, ErrorCode
 class CStoreCrawler(BaseCrawler, StoreRepository):
     """C 매장 전용 크롤러"""
     
-    def __init__(self, store_config, playwright_config, structured_logger, notification_service=None):
+    def __init__(self, store_config: Any, playwright_config: Dict[str, Any], structured_logger: Any, notification_service: Optional[Any] = None):
         super().__init__(store_config, playwright_config, structured_logger)
         self.store_id = "C"
         
@@ -68,7 +68,7 @@ class CStoreCrawler(BaseCrawler, StoreRepository):
                 }
             }
 
-    async def login(self, vehicle: Vehicle = None) -> bool:
+    async def login(self, vehicle: Optional[Vehicle] = None) -> bool:
         """C 매장 로그인"""
         try:
             await self._initialize_browser()
@@ -247,7 +247,7 @@ class CStoreCrawler(BaseCrawler, StoreRepository):
         """차량 검색 결과 없음 알림"""
         self.logger.log_warning(f"[경고] C 매장에서 차량번호 '{car_number}' 검색 결과가 없습니다.")
 
-    async def _send_low_coupon_notification(self, coupon_name: str, coupon_count: int):
+    async def send_low_coupon_notification(self, coupon_name: str, coupon_count: int) -> None:
         """쿠폰 부족 텔레그램 알림"""
         if self.notification_service:
             message = f"C 매장 보유 쿠폰 충전 필요 알림\n\n쿠폰 종류: {coupon_name}\n현재 쿠폰: {coupon_count}개\n권장 최소량: 50개"
@@ -280,7 +280,7 @@ class CStoreCrawler(BaseCrawler, StoreRepository):
                                     # 쿠폰 부족 알림
                                     if count <= 50 and count > 0:
                                         self.logger.log_warning(f"[경고] C 매장 {coupon_name} 쿠폰 부족: {count}개")
-                                        asyncio.create_task(self._send_low_coupon_notification(coupon_name, count))
+                                        asyncio.create_task(self.send_low_coupon_notification(coupon_name, count))
                                 break
                     except Exception:
                         continue

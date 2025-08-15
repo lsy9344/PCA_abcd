@@ -1,8 +1,18 @@
 ---
-description: 
-globs: 
-alwaysApply: false
+title: "PCA_abcd 프로젝트 구조 및 모듈 레이아웃"
+order: 2
+category: "architecture"
+alwaysApply: true
+tags: ["structure", "architecture", "modules"]
+lastUpdated: "2024-01-15"
+description: "클린 아키텍처 기반 프로젝트 구조와 각 모듈의 역할"
 ---
+
+# 프로젝트 구조 및 모듈 레이아웃
+
+## 🏗️ 클린 아키텍처 기반 구조
+
+```
 project_root/
 ├── core/                           # 핵심 도메인 로직 (클린 아키텍처의 중심)
 │   ├── domain/                     # 도메인 계층
@@ -37,3 +47,59 @@ project_root/
 ├── README.md                       # 프로젝트 메인 설명서 (업데이트 완료)
 ├── MIGRATION_GUIDE.md              # 기존 시스템에서 마이그레이션 가이드 (새로 생성)
 └── requirements.txt                # 프로젝트 의존성 목록 (업데이트 완료)
+```
+
+## 📋 각 계층의 역할
+
+### 🎯 Core (핵심 도메인)
+- **Domain Models**: 비즈니스 규칙과 도메인 로직
+- **Use Cases**: 애플리케이션의 주요 기능과 워크플로우
+- **Repository Interfaces**: 데이터 액세스 추상화
+
+### 🔧 Infrastructure (인프라스트럭처)
+- **Web Automation**: Playwright 기반 웹 자동화
+- **Configuration**: YAML 기반 설정 관리
+- **Notifications**: 텔레그램 등 알림 시스템
+- **Logging**: 구조화된 로깅 시스템
+
+### 🌐 Interfaces (인터페이스)
+- **API**: AWS Lambda 핸들러
+- **CLI**: 명령줄 인터페이스
+
+### 🤝 Shared (공유)
+- **Utilities**: 공통 유틸리티 함수
+- **Exceptions**: 프로젝트 전용 예외
+
+## 🎨 설계 원칙
+
+### 1. **의존성 방향**
+```
+Interfaces → Application → Domain
+Infrastructure → Application → Domain
+```
+
+### 2. **매장별 확장성**
+- 새로운 매장 추가 시 `infrastructure/web_automation/store_crawlers/` 에 새 크롤러 추가
+- `infrastructure/config/store_configs/` 에 설정 파일 추가
+- 핵심 로직은 변경하지 않음
+
+### 3. **테스트 용이성**
+- 각 계층이 독립적으로 테스트 가능
+- 의존성 주입을 통한 Mock 객체 사용 가능
+
+## 🔗 모듈 간 관계
+
+### **자동화 실행 흐름**
+1. `interfaces/api/lambda_handler.py` → 요청 수신
+2. `core/application/use_cases/apply_coupon_use_case.py` → 비즈니스 로직 실행
+3. `infrastructure/web_automation/store_crawlers/` → 웹 자동화 수행
+4. `infrastructure/notifications/` → 결과 알림
+
+### **설정 및 의존성**
+- `infrastructure/config/` → 모든 설정 중앙 관리
+- `infrastructure/factories/` → 객체 생성 및 의존성 주입
+- `shared/utils/` → 공통 기능 제공
+
+---
+
+이 구조는 **클린 아키텍처 원칙**을 따라 유지보수성, 테스트 용이성, 확장성을 보장합니다.

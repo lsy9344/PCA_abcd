@@ -3,7 +3,7 @@ D 매장 크롤러 구현
 """
 import asyncio
 import re
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 from playwright.async_api import Page, TimeoutError
 
 from infrastructure.web_automation.base_crawler import BaseCrawler
@@ -16,14 +16,14 @@ from utils.optimized_logger import OptimizedLogger, ErrorCode
 class DStoreCrawler(BaseCrawler, StoreRepository):
     """D 매장 전용 크롤러"""
     
-    def __init__(self, store_config, playwright_config, structured_logger, notification_service=None):
+    def __init__(self, store_config: Any, playwright_config: Dict[str, Any], structured_logger: Any, notification_service: Optional[Any] = None):
         super().__init__(store_config, playwright_config, structured_logger)
         self.store_id = "D"
         self.user_id = store_config.login_username
         self.notification_service = notification_service
         self.logger = OptimizedLogger("d_store_crawler", "D")
     
-    async def login(self, vehicle: Vehicle = None) -> bool:
+    async def login(self, vehicle: Optional[Vehicle] = None) -> bool:
         """D 매장 로그인"""
         try:
             await self._initialize_browser()
@@ -282,7 +282,7 @@ class DStoreCrawler(BaseCrawler, StoreRepository):
         else:
             self.logger.log_warning("[경고] 텔레그램 알림 서비스가 설정되지 않음")
 
-    async def _send_low_coupon_notification(self, coupon_name: str, coupon_count: int):
+    async def send_low_coupon_notification(self, coupon_name: str, coupon_count: int) -> None:
         """쿠폰 부족 텔레그램 알림 (A 매장과 동일한 견고한 에러 처리 적용)"""
         try:
             if self.notification_service:
@@ -367,7 +367,7 @@ class DStoreCrawler(BaseCrawler, StoreRepository):
             for coupon_name, counts in available_coupons.items():
                 if counts.get('total', 0) <= 50 and counts.get('total', 0) > 0:
                     self.logger.log_warning(f"[경고] D 매장 {coupon_name} 쿠폰 부족: {counts['total']}개")
-                    asyncio.create_task(self._send_low_coupon_notification(coupon_name, counts['total']))
+                    asyncio.create_task(self.send_low_coupon_notification(coupon_name, counts['total']))
                         
         except Exception as e:
             self.logger.log_warning(f"[경고] 쿠폰 리스트 파싱 실패: {str(e)}")

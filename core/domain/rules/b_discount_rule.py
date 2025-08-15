@@ -47,7 +47,7 @@ class BDiscountRule:
         # DiscountCalculator 생성
         self.calculator = DiscountCalculator(self.policy, self.coupon_configs)
         
-        # 레거시 호환을 위한 쿠폰 타입 매핑
+        # 쿠폰 타입 매핑 (설정 기반)
         self.coupon_types = {}
         for config_item in self.coupon_configs:
             if config_item.coupon_type == 'FREE':
@@ -108,7 +108,7 @@ class BDiscountRule:
                     
                     self.logger.info(f"[B 매장] {config.coupon_name}: 계산값 {count}개, 보유 {available}개 → 적용 {actual_count}개")
             
-            # 레거시 형식으로 변환 (기존 코드 호환)
+            # 표준 형식으로 변환 (인터페이스 호환)
             result = {'FREE_1HOUR': 0, 'PAID_30MIN': 0}
             for coupon_key, count in final_applications.items():
                 config = next((c for c in self.coupon_configs if c.coupon_key == coupon_key), None)
@@ -155,7 +155,7 @@ class BDiscountRule:
                 total_minutes += count * config.duration_minutes
                 self.logger.debug(f"[B매장 시간계산] {config.coupon_name}: {count}개 × {config.duration_minutes}분 = {count * config.duration_minutes}분")
             else:
-                # 레거시 호환 - 기존 방식으로 계산
+                # 표준 쿠폰 타입 - B매장 특화 계산
                 if coupon_key == 'FREE_30MIN':
                     total_minutes += count * 30
                 elif coupon_key == 'FREE_1HOUR':
@@ -170,7 +170,7 @@ class BDiscountRule:
                     self.logger.warning(f"[경고] 알 수 없는 쿠폰 타입: {coupon_key}")
                     
                 if coupon_key in ['FREE_30MIN', 'FREE_1HOUR', 'PAID_30MIN', 'PAID_1HOUR', 'PAID_24HOUR']:
-                    self.logger.debug(f"[B매장 시간계산] {coupon_key} (레거시): {count}개")
+                    self.logger.debug(f"[B매장 시간계산] {coupon_key} (표준): {count}개")
         
         self.logger.info(f"[B매장 시간계산] 총 적용된 할인 시간: {total_minutes}분")
         return total_minutes 

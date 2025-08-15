@@ -1,5 +1,6 @@
 """
-AWS Lambda 핸들러 - HTTP 응답 코드 수정된 버전
+C매장 전용 Lambda 핸들러
+05_store_routing.mdc 규칙에 따른 매장별 Lambda 구현
 """
 import json
 import asyncio
@@ -8,7 +9,6 @@ from typing import Dict, Any
 from core.application.dto.automation_dto import AutomationRequest, AutomationResponse
 from infrastructure.config.config_manager import ConfigManager
 from infrastructure.factories.automation_factory import AutomationFactory
-from stores.store_router import is_store_supported, get_supported_stores
 
 
 # 전역 팩토리 (Lambda 컨테이너 재사용을 위해)
@@ -28,32 +28,22 @@ def get_automation_factory() -> AutomationFactory:
 
 
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
-    """Lambda 핸들러 진입점"""
+    """C매장 전용 Lambda 핸들러"""
     try:
         # 요청 파라미터 추출
         body = json.loads(event.get('body', '{}')) if isinstance(event.get('body'), str) else event.get('body', {})
         
-        store_id = body.get('store_id') or event.get('store_id')
-        vehicle_number = body.get('vehicle_number') or event.get('vehicle_number')
+        # C매장 고정, 차량번호만 받음
+        store_id = "C"
+        vehicle_number = body.get('vehicle_number') or body.get('car_number') or event.get('vehicle_number') or event.get('car_number')
         
-        # 파라미터 검증
-        if not store_id or not vehicle_number:
+        # 차량번호 필수 검증
+        if not vehicle_number:
             return {
                 'statusCode': 422,
                 'body': json.dumps({
                     'success': False,
-                    'error': 'store_id와 vehicle_number는 필수 파라미터입니다'
-                }, ensure_ascii=False)
-            }
-        
-        # 지원되는 매장인지 확인
-        if not is_store_supported(store_id):
-            supported_stores = get_supported_stores()
-            return {
-                'statusCode': 422,
-                'body': json.dumps({
-                    'success': False,
-                    'error': f'지원하지 않는 매장입니다. 지원 매장: {supported_stores}'
+                    'error': 'vehicle_number(또는 car_number)는 필수 파라미터입니다'
                 }, ensure_ascii=False)
             }
         
@@ -65,13 +55,8 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         
         response: AutomationResponse = asyncio.run(execute_automation(request))
         
-        # [수정] response.success 값에 따라 상태 코드를 명확히 분기
-        if response.success:
-            # 성공 시: 200 OK
-            status_code = 200
-        else:
-            # 비즈니스 로직 실패 시: 422 Unprocessable Entity
-            status_code = 422
+        # 응답 상태 코드 결정
+        status_code = 200 if response.success else 422
             
         return {
             'statusCode': status_code,
@@ -87,18 +72,18 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         }
         
     except Exception as e:
-        # [수정] 예상치 못한 서버 장애 시에만 500 Internal Server Error 반환
+        # 예상치 못한 서버 장애
         return {
             'statusCode': 500,
             'body': json.dumps({
                 'success': False,
-                'error': f'Lambda 핸들러에서 예상치 못한 오류가 발생했습니다: {str(e)}'
+                'error': f'C매장 Lambda 핸들러에서 예상치 못한 오류가 발생했습니다: {str(e)}'
             }, ensure_ascii=False)
         }
 
 
 async def execute_automation(request: AutomationRequest) -> AutomationResponse:
-    """자동화 실행"""
+    """C매장 자동화 실행"""
     factory = get_automation_factory()
     use_case = factory.create_apply_coupon_use_case(request.store_id)
     

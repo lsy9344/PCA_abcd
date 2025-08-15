@@ -1,9 +1,14 @@
 ---
-description: 
-globs: 
+title: "매장 라우팅 및 Lambda 구조"
+order: 5
+category: "architecture"
 alwaysApply: false
+tags: ["routing", "lambda", "factory"]
+lastUpdated: "2024-01-15"
+description: "매장별 Lambda 라우팅과 AutomationFactory 설계"
 ---
-# [2] 매장 라우팅 및 Lambda 구조
+
+# 매장 라우팅 및 Lambda 구조
 
 ## 🔄 Lambda 실행 흐름
 - 매장별로 Lambda 함수 파일을 따로 만든다.

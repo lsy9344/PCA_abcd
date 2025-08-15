@@ -4,7 +4,7 @@ B 매장 크롤러 - 실행 순서 및 안정성 개선된 최종 버전
 import asyncio
 import re
 import logging
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 from playwright.async_api import Page, Browser, Playwright, async_playwright
 
 from infrastructure.web_automation.base_crawler import BaseCrawler
@@ -17,14 +17,14 @@ from utils.optimized_logger import OptimizedLogger, ErrorCode
 class BStoreCrawler(BaseCrawler, StoreRepository):
     """B 매장 전용 크롤러 - 실행 순서 및 안정성 개선된 최종 버전"""
     
-    def __init__(self, store_config, playwright_config, structured_logger, notification_service=None):
+    def __init__(self, store_config: Any, playwright_config: Dict[str, Any], structured_logger: Any, notification_service: Optional[Any] = None):
         super().__init__(store_config, playwright_config, structured_logger)
         self.store_id = "B"
         self.user_id = store_config.login_username
         self.notification_service = notification_service
         self.logger = OptimizedLogger("b_store_crawler", "B")
     
-    async def login(self, vehicle: Vehicle = None) -> bool:
+    async def login(self, vehicle: Optional[Vehicle] = None) -> bool:
         """B 매장 로그인 및 팝업 처리"""
         try:
             await self._initialize_browser()
@@ -208,7 +208,7 @@ class BStoreCrawler(BaseCrawler, StoreRepository):
         """차량 검색 결과 없음 알림"""
         self.logger.log_warning(f"[경고] B 매장에서 차량번호 '{car_number}' 검색 결과가 없습니다.")
 
-    async def _send_low_coupon_notification(self, coupon_count: int, remaining_amount: int):
+    async def send_low_coupon_notification(self, coupon_count: int, remaining_amount: int) -> None:
         """쿠폰 부족 텔레그램 알림"""
         if self.notification_service:
             message = f"B 매장 보유 쿠폰 충전 필요 알림\n\n현재 쿠폰: {coupon_count}개\n남은 금액: {remaining_amount:,}원"
@@ -242,7 +242,7 @@ class BStoreCrawler(BaseCrawler, StoreRepository):
                 self.logger.log_info(f"[성공] 유료 30분할인: {paid_30min_count}개")
                 if paid_30min_count <= 50:
                     self.logger.log_warning(f"[경고] B 매장 유료 30분할인 쿠폰 부족: {paid_30min_count}개")
-                    asyncio.create_task(self._send_low_coupon_notification(paid_30min_count, amount))
+                    asyncio.create_task(self.send_low_coupon_notification(paid_30min_count, amount))
             else:
                 self.logger.log_warning(f"[경고] 남은잔여량 숫자 추출 실패: {amount_text}")
         except Exception as e:

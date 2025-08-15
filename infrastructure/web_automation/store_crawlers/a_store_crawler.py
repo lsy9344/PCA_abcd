@@ -3,10 +3,11 @@ A매장 크롤러 구현 - get_coupon_history 인수 수정된 버전
 """
 import re
 import asyncio
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Optional, Any
 from playwright.async_api import TimeoutError
 
 from infrastructure.web_automation.base_crawler import BaseCrawler
+from core.domain.repositories.store_repository import StoreRepository
 from core.domain.models.vehicle import Vehicle
 from core.domain.models.coupon import CouponHistory, CouponApplication
 from shared.exceptions.automation_exceptions import (
@@ -15,20 +16,19 @@ from shared.exceptions.automation_exceptions import (
 from infrastructure.config.config_manager import ConfigManager
 from infrastructure.logging.structured_logger import StructuredLogger
 from utils.optimized_logger import OptimizedLogger, ErrorCode
-from utils.optimized_logger import get_optimized_logger
 
 
-class AStoreCrawler(BaseCrawler):
+class AStoreCrawler(BaseCrawler, StoreRepository):
     """A매장 크롤러"""
     
-    def __init__(self, store_config, playwright_config, structured_logger: StructuredLogger, notification_service=None):
+    def __init__(self, store_config: Any, playwright_config: Dict[str, Any], structured_logger: StructuredLogger, notification_service: Optional[Any] = None):
         super().__init__(store_config, playwright_config, structured_logger)
-        self.logger = OptimizedLogger("a_store_crawler", "A")  # 최적화된 로거 사용
+        self.logger = OptimizedLogger("a_store_crawler", "A")  # 최적화된 로거로 통일
         self.notification_service = notification_service
     
     # login, search_vehicle 메서드는 변경 없음 ...
 
-    async def login(self, vehicle: Vehicle = None) -> bool:
+    async def login(self, vehicle: Optional[Vehicle] = None) -> bool:
         """로그인 수행 (팝업 처리 포함)"""
         try:
             await self._initialize_browser()
@@ -108,7 +108,7 @@ class AStoreCrawler(BaseCrawler):
             # 검색 결과 대기
             await self.page.wait_for_timeout(1000)
             
-            # [추가] #parkName의 텍스트가 '검색된 차량이 없습니다.'인지 확인
+            # #parkName의 텍스트가 '검색된 차량이 없습니다.'인지 확인
             try:
                 park_name_elem = self.page.locator('#parkName')
                 if await park_name_elem.count() > 0:
@@ -122,7 +122,7 @@ class AStoreCrawler(BaseCrawler):
             # 기존: 검색 결과 확인
             no_result = self.page.locator('text="검색된 차량이 없습니다"')
             if await no_result.count() > 0:
-                details = self.logger.log_error("A", "차량검색", "NO_VEHICLE", f"차량번호 {vehicle.number} 검색 결과 없음")
+                self.logger.log_error(ErrorCode.NO_VEHICLE, "차량검색", f"차량번호 {vehicle.number} 검색 결과 없음")
                 return False
                 
             # 차량 선택 버튼 클릭
@@ -138,7 +138,7 @@ class AStoreCrawler(BaseCrawler):
                         self.logger.log_info('[차량검색] button:has-text("차량 선택") 버튼 클릭 성공')
                     await self.page.wait_for_timeout(3000)
                 except Exception as e2:
-                    details = self.logger.log_error("A", "차량검색", "FAIL_SEARCH", f"차량 선택 버튼 클릭 실패: {str(e1)}, {str(e2)}")
+                    self.logger.log_error(ErrorCode.FAIL_SEARCH, "차량검색", f"차량 선택 버튼 클릭 실패: {str(e1)}, {str(e2)}")
                     return False
             
             # 개발 환경에서만 성공 로그 기록
@@ -147,7 +147,7 @@ class AStoreCrawler(BaseCrawler):
             return True
             
         except Exception as e:
-            details = self.logger.log_error("A", "차량검색", "FAIL_SEARCH", str(e))
+            self.logger.log_error(ErrorCode.FAIL_SEARCH, "차량검색", str(e))
             return False
 
     # [수정] 여기를 수정했습니다.
@@ -228,7 +228,7 @@ class AStoreCrawler(BaseCrawler):
             for coupon_name, counts in available_coupons.items():
                 if ('1시간할인권(유료)' in coupon_name or '1시간주말할인권(유료)' in coupon_name) and counts['total'] <= 50 and counts['total'] > 0:
                     self.logger.log_warning(f"[경고] A 매장 {coupon_name} 쿠폰 부족: {counts['total']}개")
-                    asyncio.create_task(self._send_low_coupon_notification(coupon_name, counts['total']))
+                    asyncio.create_task(self.send_low_coupon_notification(coupon_name, counts['total']))
 
             return CouponHistory(
                 store_id="A",
@@ -297,7 +297,7 @@ class AStoreCrawler(BaseCrawler):
                                 if self.logger.should_log_info():
                                     self.logger.log_info(f"[쿠폰적용] {coupon_name} {count}개 적용 성공")
                             else:
-                                details = self.logger.log_error("A", "쿠폰적용", "FAIL_APPLY", f"{coupon_name} 적용 버튼을 찾을 수 없음")
+                                self.logger.log_error(ErrorCode.FAIL_APPLY, "쿠폰적용", f"{coupon_name} 적용 버튼을 찾을 수 없음")
                                 return False
                             break
             
@@ -307,10 +307,10 @@ class AStoreCrawler(BaseCrawler):
             return True
             
         except Exception as e:
-            details = self.logger.log_error("A", "쿠폰적용", "FAIL_APPLY", str(e))
+            self.logger.log_error(ErrorCode.FAIL_APPLY, "쿠폰적용", str(e))
             return False
 
-    async def _send_low_coupon_notification(self, coupon_name: str, coupon_count: int):
+    async def send_low_coupon_notification(self, coupon_name: str, coupon_count: int) -> None:
         """쿠폰 부족 텔레그램 알림 (CloudWatch Logs 비용 최적화 적용)"""
         try:
             if self.notification_service:
@@ -332,3 +332,7 @@ class AStoreCrawler(BaseCrawler):
         except Exception as e:
             # CloudWatch 비용 절감을 위한 간소화된 에러 로그
             self.logger.log_error(ErrorCode.FAIL_APPLY, "텔레그램알림", str(e))
+
+    async def cleanup(self) -> None:
+        """리소스 정리 - StoreRepository 인터페이스 구현"""
+        await super().cleanup()

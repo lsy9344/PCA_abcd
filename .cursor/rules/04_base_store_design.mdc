@@ -1,9 +1,14 @@
 ---
-description: 
-globs: 
+title: "BaseCrawler 클래스 설계 원칙"
+order: 4
+category: "architecture"
 alwaysApply: false
+tags: ["design", "crawler", "inheritance"]
+lastUpdated: "2024-01-15"
+description: "모든 매장 크롤러의 공통 인터페이스 설계"
 ---
-# [1] BaseCrawler 클래스 설계
+
+# BaseCrawler 클래스 설계
 
 ## 🧱 목표
 - 모든 매장 크롤러는 BaseCrawler를 상속받아 같은 인터페이스로 작동

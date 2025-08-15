@@ -579,6 +579,12 @@ class CStoreUITest:
                     coupon_name = coupon_config.get('name', coupon_type)
                     print(f"     - {coupon_name}: {count}개")
             
+            # 모든 쿠폰이 0개인지 확인 (추가 할인이 불필요한 경우)
+            total_required_coupons = sum(required_coupons.values())
+            if total_required_coupons == 0:
+                print(f"   ✅ 목표 할인 시간 이미 달성 - 추가 쿠폰 적용 불필요")
+                return True
+            
             # C 매장 쿠폰 매핑 (업데이트된 키 사용)
             coupon_mapping = {
                 "FREE_2HOUR": [
@@ -673,7 +679,8 @@ class CStoreUITest:
                         try:
                             href = await link.get_attribute('href')
                             text = await link.inner_text()
-                            if href and ('discountticket' in href or 'discount' in href.lower()):
+                            # ✅ C 매장 쿠폰 링크 판별 규칙: JavaScript 함수 호출만 쿠폰으로 인식
+                            if href and href.startswith('javascript:insert_discount'):
                                 coupon_links.append((text.strip(), href))
                                 print(f"   🎫 쿠폰 링크 발견: '{text.strip()}' - {href}")
                         except:

@@ -47,7 +47,7 @@ class ADiscountRule:
         # DiscountCalculator 생성
         self.calculator = DiscountCalculator(self.policy, self.coupon_configs)
         
-        # 레거시 호환을 위한 쿠폰 타입 매핑
+        # 쿠폰 타입 매핑 (설정 기반)
         self.coupon_types = {}
         for config_item in self.coupon_configs:
             if config_item.coupon_type == 'FREE':
@@ -109,7 +109,7 @@ class ADiscountRule:
                     
                     self.logger.info(f"[A 매장] {config.coupon_name}: 계산값 {count}개, 보유 {available}개 → 적용 {actual_count}개")
             
-            # 레거시 형식으로 변환 (기존 코드 호환)
+            # 표준 형식으로 변환 (인터페이스 호환)
             result = {'FREE_1HOUR': 0, 'PAID_1HOUR': 0, 'WEEKEND_1HOUR': 0}
             for coupon_key, count in final_applications.items():
                 config = next((c for c in self.coupon_configs if c.coupon_key == coupon_key), None)
@@ -149,10 +149,10 @@ class ADiscountRule:
                 total_minutes += count * config.duration_minutes
                 self.logger.debug(f"[시간계산] {config.coupon_name}: {count}개 × {config.duration_minutes}분 = {count * config.duration_minutes}분")
             else:
-                # 레거시 호환 - 기존 방식으로 계산
+                # 표준 쿠폰 타입 - 기본 1시간 단위로 계산
                 if coupon_key in ['FREE_1HOUR', 'PAID_1HOUR', 'WEEKEND_1HOUR']:
                     total_minutes += count * 60
-                    self.logger.debug(f"[시간계산] {coupon_key} (레거시): {count}개 × 60분 = {count * 60}분")
+                    self.logger.debug(f"[시간계산] {coupon_key} (표준): {count}개 × 60분 = {count * 60}분")
                 else:
                     self.logger.warning(f"[경고] 알 수 없는 쿠폰 타입: {coupon_key}")
         

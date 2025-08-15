@@ -1,8 +1,13 @@
 ---
-description: Server Caching Issues and Test Environment Management Guidelines
-globs: 
+title: "서버 캐싱 및 테스트 환경 관리"
+order: 91
+category: "reference"
 alwaysApply: false
+tags: ["server", "caching", "environment", "testing"]
+lastUpdated: "2024-01-15"
+description: "서버 캐싱 문제 및 테스트 환경 관리 가이드라인"
 ---
+
 # 서버 캐싱 문제 및 테스트 환경 관리 가이드라인
 
 ## 🚨 **핵심 문제: Python 모듈 캐싱**
@@ -229,46 +234,4 @@ if __name__ == "__main__":
 
 ---
 
-## 🎯 **모범 사례**
-
-### **✅ 올바른 개발 플로우**
-```bash
-1. 코드 수정
-2. check_dev_env.py 실행 (환경 확인)
-3. restart_server.py 실행 (안전 재시작)
-4. CLI 테스트 실행
-5. 서버 테스트 실행
-6. 결과 비교 및 검증
-```
-
-### **✅ 문제 발생 시 대응**
-```bash
-1. 에러 로그 확인
-2. 서버 프로세스 완전 종료
-3. 코드 수정
-4. 환경 체크
-5. 서버 재시작
-6. 재테스트
-```
-
----
-
-## 💡 **추가 팁**
-
-### **IDE 설정**
-- **VS Code/Cursor**: 터미널에서 `Ctrl+C`로 서버 종료 후 재시작
-- **파일 변경 감지**: 자동 재시작 도구 사용 고려 (개발 시에만)
-
-### **로깅 활용**
-```python
-# 서버 시작 시 버전 정보 로그
-import time
-startup_time = time.strftime("%Y-%m-%d %H:%M:%S")
-logger.info(f"서버 시작 시간: {startup_time}")
-logger.info(f"코드 버전: {git_commit_hash}")  # Git 커밋 해시
-```
-
----
-
 **이 가이드라인을 준수하여 안정적인 개발 및 테스트 환경을 유지하세요!**
-

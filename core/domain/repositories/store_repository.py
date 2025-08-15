@@ -11,7 +11,7 @@ class StoreRepository(ABC):
     """매장 데이터 접근 인터페이스"""
     
     @abstractmethod
-    async def login(self) -> bool:
+    async def login(self, vehicle: Vehicle = None) -> bool:
         """로그인 수행"""
         pass
     

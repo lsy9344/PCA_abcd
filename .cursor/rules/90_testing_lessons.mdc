@@ -1,8 +1,13 @@
 ---
-description: Common problems and solutions for store testing
-globs: 
+title: "매장 테스트 경험 및 문제 해결"
+order: 90
+category: "reference"
 alwaysApply: false
+tags: ["testing", "lessons", "troubleshooting"]
+lastUpdated: "2024-01-15"
+description: "매장 테스트 공통 문제 분석 및 해결책 - 같은 실수 방지 지침"
 ---
+
 # 매장 테스트 공통 문제 분석 및 해결책 - 같은 실수 방지 지침
 
 ## 🚨 핵심 문제 요약
@@ -59,59 +64,6 @@ discount_info = {
 □ CLI 경로 테스트: python interfaces/cli/main.py --store X --vehicle 1234
 □ 서버 경로 테스트: 서버 시작 후 웹훅 호출 테스트
 □ 두 경로의 결과가 동일한가?
-```
-
----
-
-## 🔧 **개발 시 필수 준수사항**
-
-### **1. 새 매장 클래스 작성 시**
-```python
-# ✅ 올바른 방법
-class NewStoreCrawler(StoreRepository):
-    def __init__(self, store_config, playwright_config, logger):
-        # 필수 초기화
-        
-    async def login(self) -> bool:
-        # page 파라미터 없이 self.page 사용
-        
-    async def search_vehicle(self, vehicle: Vehicle) -> bool:
-        # Vehicle 객체 파라미터 사용
-        
-    async def get_coupon_history(self, vehicle: Vehicle) -> CouponHistory:
-        # 반드시 CouponHistory 객체 반환
-        
-    async def apply_coupons(self, applications: List[CouponApplication]) -> bool:
-        # List[CouponApplication] 파라미터 사용
-        
-    async def cleanup(self) -> None:
-        # 필수 구현 - 리소스 정리
-```
-
-### **2. 데이터 구조 통일**
-```python
-# ✅ 모든 매장에서 사용해야 하는 공통 구조 (A 매장 기준)
-def _parse_discount_info(self, discount_data: any, discount_info: Dict[str, Dict[str, int]]):
-    # A 매장과 동일한 구조로 반드시 설정
-    discount_info['COUPON_NAME'] = {'car': count, 'total': count}
-```
-
-### **3. 매장별 설정 파일 관리**
-```python
-# ✅ config.py에서 매장별 설정 분리 관리
-STORE_CONFIGS = {
-    'A': {
-        'login_url': 'https://store-a.com/login',
-        'coupons': {...}
-    },
-    'B': {
-        'login_url': 'https://store-b.com/login', 
-        'coupons': {...}
-    }
-}
-
-# ❌ 하드코딩 금지
-# login_url = "https://hardcoded-url.com"
 ```
 
 ---
@@ -194,4 +146,3 @@ python interfaces/cli/main.py --store [매장ID] --vehicle [차량번호]
 ---
 
 이 지침을 항상 참고하여 모든 매장에서 동일한 문제가 재발하지 않도록 주의하세요!
-
