@@ -12,6 +12,9 @@ import calendar
 import sys
 sys.path.append('.')
 from shared.utils.common_coupon_calculator import CommonCouponCalculator, StoreConfig
+from infrastructure.notifications.telegram_adapter import TelegramAdapter
+from infrastructure.logging.structured_logger import StructuredLogger
+from core.application.dto.automation_dto import ErrorContext
 
 
 class CStoreUITest:
@@ -32,6 +35,11 @@ class CStoreUITest:
         self.username = self.config['login']['username']
         self.password = self.config['login']['password']
         
+        # 텔레그램 알림 서비스 초기화
+        self.notification_service = None
+        self.logger = None
+        self._initialize_notification_service()
+        
     def _load_config(self):
         """C 매장 설정 로드"""
         config_path = Path("infrastructure/config/store_configs/c_store_config.yaml")
@@ -44,6 +52,28 @@ class CStoreUITest:
         # 0=월요일, 6=일요일
         weekday = today.weekday()
         return weekday < 5  # 월~금 (0~4)
+    
+    def _initialize_notification_service(self):
+        """텔레그램 알림 서비스 초기화"""
+        try:
+            # 베이스 설정 로드
+            base_config_path = Path("infrastructure/config/base_config.yaml")
+            if base_config_path.exists():
+                with open(base_config_path, 'r', encoding='utf-8') as f:
+                    base_config = yaml.safe_load(f)
+                
+                telegram_config = base_config.get('telegram', {})
+                if telegram_config.get('bot_token') and telegram_config.get('chat_id'):
+                    log_config = base_config.get('logging', {'level': 'INFO'})
+                    self.logger = StructuredLogger("test_c_store_ui", log_config)
+                    self.notification_service = TelegramAdapter(telegram_config, self.logger)
+                    print("   ✅ 텔레그램 알림 서비스 초기화 완료")
+                else:
+                    print("   ⚠️ 텔레그램 설정이 없어 알림 기능이 비활성화됩니다")
+            else:
+                print("   ⚠️ base_config.yaml 파일을 찾을 수 없어 알림 기능이 비활성화됩니다")
+        except Exception as e:
+            print(f"   ⚠️ 텔레그램 알림 서비스 초기화 실패: {str(e)}")
     
     async def _parse_current_applied_coupons(self):
         """현재 적용된 쿠폰 파싱 (C 매장: total_history만 사용)"""
@@ -385,7 +415,7 @@ class CStoreUITest:
         """3단계: 차량번호 입력"""
         print("\n📍 3단계: 차량번호 입력")
         
-        test_car_number = "6897"  # 테스트용 차량번호
+        test_car_number = "1111"  # 테스트용 차량번호
         
         try:
             car_input_selector = self.config['selectors']['search']['car_number_input']
@@ -468,9 +498,12 @@ class CStoreUITest:
                         print(f"   ✅ 팝업 닫기 완료")
                         break
                 
-                print(f"   ℹ️  차량번호 '{search_number}'에 대한 검색 결과가 없습니다")
+                print(f"   ❌ 차량번호 '{search_number}'에 대한 검색 결과가 없습니다")
+                
+                # 텔레그램 알림 전송
+                await self._send_vehicle_not_found_notification(search_number)
                 await self._save_screenshot("step5_no_result")
-                return True  # 테스트 목적상 성공으로 처리
+                return False  # 검색 실패시 테스트 중단
             
             # 테이블 찾기 및 차량 선택 - 스크린샷에서 확인된 실제 테이블 ID 사용
             table_selectors = [
@@ -797,6 +830,29 @@ class CStoreUITest:
             # 팝업 처리 실패해도 계속 진행
     
 
+    
+    async def _send_vehicle_not_found_notification(self, vehicle_number):
+        """차량 검색 실패 시 텔레그램 알림 전송"""
+        try:
+            if self.notification_service:
+                error_context = ErrorContext(
+                    store_id="C",
+                    vehicle_number=vehicle_number,
+                    error_step="차량검색",
+                    error_message="검색된 차량이 없습니다",
+                    error_time=datetime.now()
+                )
+                
+                success = await self.notification_service.send_error_notification(error_context)
+                if success:
+                    print(f"   ✅ 텔레그램 알림 전송 성공: 차량번호 {vehicle_number} 검색 실패")
+                else:
+                    print(f"   ❌ 텔레그램 알림 전송 실패")
+            else:
+                print(f"   ⚠️ 텔레그램 알림 서비스가 설정되지 않음")
+                
+        except Exception as e:
+            print(f"   ❌ 텔레그램 알림 전송 중 오류: {str(e)}")
     
     async def _save_screenshot(self, step_name):
         """스크린샷 저장"""

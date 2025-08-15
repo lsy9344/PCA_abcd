@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "sequential-thinking-mcp": {
+      "command": "uvx",
+      "args": [
+        "sequential-thinking-mcp"
+      ]
+    }
+  }
+}

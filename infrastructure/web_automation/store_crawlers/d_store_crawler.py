@@ -17,10 +17,9 @@ class DStoreCrawler(BaseCrawler, StoreRepository):
     """D 매장 전용 크롤러"""
     
     def __init__(self, store_config: Any, playwright_config: Dict[str, Any], structured_logger: Any, notification_service: Optional[Any] = None):
-        super().__init__(store_config, playwright_config, structured_logger)
+        super().__init__(store_config, playwright_config, structured_logger, notification_service)
         self.store_id = "D"
         self.user_id = store_config.login_username
-        self.notification_service = notification_service
         self.logger = OptimizedLogger("d_store_crawler", "D")
     
     async def login(self, vehicle: Optional[Vehicle] = None) -> bool:
@@ -75,10 +74,8 @@ class DStoreCrawler(BaseCrawler, StoreRepository):
             await self.page.keyboard.press('Enter')
             await self.page.wait_for_timeout(3000)  # 검색 결과 로딩 대기 시간 증가
             
-            # 검색 결과 없음 팝업 확인 (이미지 기반 팝업이므로 구조적 요소로 감지)
-            if await self._check_no_vehicle_popup():
-                await self._handle_no_result_popup()
-                await self._send_no_vehicle_notification(car_number)
+            # 공통 차량 검색 실패 감지 로직 사용 (설정 기반)
+            if await self.check_no_vehicle_found_by_config(self.page, car_number):
                 self.logger.log_error(ErrorCode.NO_VEHICLE, "차량검색", f"차량번호 {car_number} 검색 결과 없음")
                 return False
             
@@ -270,15 +267,6 @@ class DStoreCrawler(BaseCrawler, StoreRepository):
         except Exception as e:
             self.logger.log_warning(f"[경고] 팝업 닫기 실패: {str(e)}")
 
-    async def _send_no_vehicle_notification(self, car_number: str):
-        """차량 검색 결과 없음 알림"""
-        self.logger.log_warning(f"[경고] D 매장에서 차량번호 '{car_number}' 검색 결과가 없습니다.")
-        
-        # 텔레그램 알림 전송
-        if self.notification_service:
-            message = f"D 매장에서 차량번호 '{car_number}' 검색 결과가 없습니다."
-            await self.notification_service.send_success_notification(message=message, store_id=self.store_id)
-            self.logger.log_info("[성공] 차량검색 실패 텔레그램 알림 전송 완료")
         else:
             self.logger.log_warning("[경고] 텔레그램 알림 서비스가 설정되지 않음")
 

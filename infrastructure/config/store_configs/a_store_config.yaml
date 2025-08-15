@@ -69,4 +69,37 @@ selectors:
     all_dc_list: "#allDcList"
     all_dc_rows: "#allDcList tr"
     apply_button: 'button:has-text("적용")'
-    apply_button_prefix: "#apply_" 
+    apply_button_prefix: "#apply_"
+
+# 차량 검색 실패 감지 설정
+search_failure_detection:
+  # 우선순위 순으로 시도할 감지 방법들
+  methods:
+    - type: "element_text"           # A매장 특화: parkName 요소 텍스트 확인
+      selector: "#parkName"
+      patterns: ["검색된 차량이 없습니다"]
+      priority: 1
+      
+    - type: "text_pattern"           # 일반적인 텍스트 패턴 검색
+      patterns: 
+        - "검색된 차량이 없습니다"
+        - "검색 결과가 없습니다"
+        - "차량을 찾을 수 없습니다"
+        - "등록된 차량이 없습니다"
+      priority: 2
+      
+    - type: "locator_check"          # Playwright 로케이터 직접 사용
+      locators:
+        - 'text="검색된 차량이 없습니다"'
+        - 'text="검색 결과가 없습니다"'
+      priority: 3
+
+  # 팝업 닫기 설정
+  popup_close:
+    selectors:
+      - 'text=OK'
+      - 'text=확인'
+      - 'text=닫기'
+      - 'button:has-text("OK")'
+      - 'button:has-text("확인")'
+      - '#popupOk'

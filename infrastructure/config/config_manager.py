@@ -49,17 +49,38 @@ class ConfigManager:
         for key, coupon_info in config_data['coupons'].items():
             discount_types[key] = coupon_info['name']
         
-        return StoreConfig(
+        # search_failure_detection 설정 가져오기
+        search_failure_detection = config_data.get('search_failure_detection', {})
+        
+        # 할인 정책 설정 처리 (구조가 다를 수 있으므로 안전하게 처리)
+        policy_data = config_data.get('policy', {})
+        discount_policy_data = config_data.get('discount_policy', {})
+        
+        # 기본값 설정
+        max_weekday_coupons = 5
+        max_weekend_coupons = 3
+        
+        # 다양한 구조 지원
+        if 'weekday' in discount_policy_data:
+            max_weekday_coupons = discount_policy_data['weekday'].get('max_coupons', 5)
+            max_weekend_coupons = discount_policy_data['weekend'].get('max_coupons', 3)
+        
+        store_config = StoreConfig(
             store_id=config_data['store']['id'],
             name=config_data['store']['name'],
             website_url=config_data['store']['website_url'],
             login_username=config_data['login']['username'],
             login_password=config_data['login']['password'],
             discount_types=discount_types,
-            max_weekday_coupons=config_data['discount_policy']['weekday']['max_coupons'],
-            max_weekend_coupons=config_data['discount_policy']['weekend']['max_coupons'],
+            max_weekday_coupons=max_weekday_coupons,
+            max_weekend_coupons=max_weekend_coupons,
             selectors=config_data.get('selectors', {})
         )
+        
+        # search_failure_detection 설정을 동적으로 추가
+        store_config.search_failure_detection = search_failure_detection
+        
+        return store_config
     
     def get_discount_policy(self, store_id: str) -> DiscountPolicy:
         """할인 정책 조회"""

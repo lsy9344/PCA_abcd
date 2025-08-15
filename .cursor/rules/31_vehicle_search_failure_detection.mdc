@@ -1,0 +1,287 @@
+---
+title: "차량 검색 실패 감지 및 텔레그램 알림 정책"
+order: 31
+category: "implementation"
+alwaysApply: true
+tags: ["vehicle", "search", "failure", "telegram", "notification"]
+lastUpdated: "2024-01-15"
+description: "모든 매장의 차량 검색 실패 감지 및 텔레그램 알림 공통 로직"
+---
+
+# 차량 검색 실패 감지 및 텔레그램 알림 정책
+
+## 1. 기본 원칙
+
+### 1.1 핵심 요구사항
+- **모든 매장에서 차량 검색 실패 시 텔레그램 알림 필수**
+- **"검색된 차량이 없습니다"와 유사한 모든 문구 감지**
+- **공통 로직으로 구현하여 중복 코드 제거**
+- **BaseCrawler에서 제공하는 통합 감지 및 알림 기능 사용**
+
+### 1.2 적용 범위
+- A매장, B매장, C매장, D매장 모든 크롤러
+- 향후 추가되는 모든 새로운 매장 크롤러
+
+## 2. BaseCrawler 공통 메서드
+
+### 2.1 check_no_vehicle_found() 메서드
+```python
+async def check_no_vehicle_found(self, page: Page, car_number: str) -> bool:
+    """
+    공통 차량 검색 실패 감지 로직
+    모든 매장에서 '검색된 차량이 없습니다'와 유사한 문구를 감지
+    """
+```
+
+**감지 패턴:**
+- `검색 결과가 없습니다`
+- `검색된 차량이 없습니다`
+- `차량을 찾을 수 없습니다`
+- `등록된 차량이 없습니다`
+- `조회 결과가 없습니다`
+- `해당 차량 정보가 없습니다`
+
+**감지 방식:**
+1. **구조적 감지**: Playwright 셀렉터를 통한 팝업 감지
+2. **내용 기반 감지**: 페이지 내용 전체에서 키워드 검색
+
+### 2.2 _send_no_vehicle_notification() 메서드
+```python
+async def _send_no_vehicle_notification(self, car_number: str):
+    """차량 검색 결과 없음 텔레그램 알림"""
+```
+
+**알림 내용:**
+```
+차량 검색 실패 알림
+
+매장: {store_id}
+차량번호: {car_number}
+상태: 검색된 차량이 없습니다
+```
+
+## 3. 매장별 구현 가이드
+
+### 3.1 기존 코드 제거
+각 매장 크롤러에서 다음 항목들을 제거해야 합니다:
+- 개별 `_send_no_vehicle_notification` 메서드
+- 차량 검색 실패 감지 로직 (no_result_patterns 등)
+- 팝업 닫기 로직
+
+### 3.2 새로운 구현 패턴
+```python
+async def search_vehicle(self, vehicle: Vehicle) -> bool:
+    """차량 검색"""
+    try:
+        car_number = vehicle.number
+        
+        # 차량번호 입력 및 검색 버튼 클릭
+        # ... 매장별 고유 로직 ...
+        
+        # 검색 결과 로딩 대기
+        await self.page.wait_for_timeout(2000)
+        
+        # 공통 차량 검색 실패 감지 로직 사용
+        if await self.check_no_vehicle_found(self.page, car_number):
+            self.logger.log_error(ErrorCode.NO_VEHICLE, "차량검색", f"차량번호 {car_number} 검색 결과 없음")
+            return False
+        
+        # 성공 시 후속 처리
+        # ... 매장별 고유 로직 ...
+        
+        return True
+        
+    except Exception as e:
+        self.logger.log_error(ErrorCode.FAIL_SEARCH, "차량검색", str(e))
+        return False
+```
+
+### 3.3 생성자 수정
+```python
+def __init__(self, store_config, playwright_config, structured_logger, notification_service=None):
+    # notification_service를 부모 클래스에 전달
+    super().__init__(store_config, playwright_config, structured_logger, notification_service)
+    # ... 매장별 고유 초기화 ...
+```
+
+### 3.4 UI 테스트 파일 표준화 가이드
+
+#### 필수 import 추가
+```python
+from infrastructure.notifications.telegram_adapter import TelegramAdapter
+from infrastructure.logging.structured_logger import StructuredLogger
+from core.application.dto.automation_dto import ErrorContext
+```
+
+#### 클래스 생성자에 텔레그램 서비스 초기화 추가
+```python
+def __init__(self):
+    # ... 기존 초기화 코드 ...
+    
+    # 텔레그램 알림 서비스 초기화
+    self.notification_service = None
+    self.logger = None
+    self._initialize_notification_service()
+
+def _initialize_notification_service(self):
+    """텔레그램 알림 서비스 초기화"""
+    try:
+        # 베이스 설정 로드
+        base_config_path = Path("infrastructure/config/base_config.yaml")
+        if base_config_path.exists():
+            with open(base_config_path, 'r', encoding='utf-8') as f:
+                base_config = yaml.safe_load(f)
+            
+            telegram_config = base_config.get('telegram', {})
+            if telegram_config.get('bot_token') and telegram_config.get('chat_id'):
+                log_config = base_config.get('logging', {'level': 'INFO'})
+                self.logger = StructuredLogger("test_{store}_store_ui", log_config)
+                self.notification_service = TelegramAdapter(telegram_config, self.logger)
+                print("   ✅ 텔레그램 알림 서비스 초기화 완료")
+            else:
+                print("   ⚠️ 텔레그램 설정이 없어 알림 기능이 비활성화됩니다")
+        else:
+            print("   ⚠️ base_config.yaml 파일을 찾을 수 없어 알림 기능이 비활성화됩니다")
+    except Exception as e:
+        print(f"   ⚠️ 텔레그램 알림 서비스 초기화 실패: {str(e)}")
+```
+
+#### 차량 검색 실패 알림 메서드 추가
+```python
+async def _send_vehicle_not_found_notification(self, vehicle_number):
+    """차량 검색 실패 시 텔레그램 알림 전송"""
+    try:
+        if self.notification_service:
+            error_context = ErrorContext(
+                store_id="{STORE_ID}",  # A, B, C, D로 매장별 설정
+                vehicle_number=vehicle_number,
+                error_step="차량검색",
+                error_message="검색된 차량이 없습니다",
+                error_time=datetime.now()
+            )
+            
+            success = await self.notification_service.send_error_notification(error_context)
+            if success:
+                print(f"   ✅ 텔레그램 알림 전송 성공: 차량번호 {vehicle_number} 검색 실패")
+            else:
+                print(f"   ❌ 텔레그램 알림 전송 실패")
+        else:
+            print(f"   ⚠️ 텔레그램 알림 서비스가 설정되지 않음")
+            
+    except Exception as e:
+        print(f"   ❌ 텔레그램 알림 전송 중 오류: {str(e)}")
+```
+
+#### 차량 검색 실패 감지 로직 수정
+각 매장의 차량 검색 결과 처리 부분에서 검색 실패 감지 시 텔레그램 알림을 호출합니다:
+```python
+# 검색 결과 없음 체크 (매장별 셀렉터 사용)
+if await self.page.locator(no_result_selector).count() > 0:
+    result_text = await self.page.locator(no_result_selector).inner_text()
+    if '검색된 차량이 없습니다' in result_text or '검색 결과가 없습니다' in result_text:
+        print(f"   ❌ 검색 결과 없음: {result_text}")
+        await self._save_screenshot("step{X}_no_result")
+        
+        # 텔레그램 알림 전송
+        await self._send_vehicle_not_found_notification("테스트차량번호")
+        
+        return False  # 검색 실패시 테스트 중단
+```
+
+## 4. 구현 체크리스트
+
+### 4.1 BaseCrawler 수정사항 ✅
+- [x] `check_no_vehicle_found()` 메서드 추가
+- [x] `_close_no_result_popup()` 메서드 추가
+- [x] `_send_no_vehicle_notification()` 메서드 추가
+- [x] 생성자에 `notification_service` 파라미터 추가
+
+### 4.2 각 매장 크롤러 수정사항 ✅
+- [x] **A매장**: 생성자 수정 (기존 로직 유지)
+- [x] **B매장**: 생성자 수정, `search_vehicle` 로직 교체, 기존 메서드 제거
+- [x] **C매장**: 생성자 수정, `search_vehicle` 로직 교체, 기존 메서드 제거
+- [x] **D매장**: 생성자 수정, `search_vehicle` 로직 교체, 기존 메서드 제거
+
+### 4.3 UI 테스트 파일 수정사항 ✅
+- [x] **A매장 UI 테스트**: 텔레그램 알림 서비스 초기화 및 차량 검색 실패 감지 로직 추가
+- [x] **B매장 UI 테스트**: 새로운 파일 생성, 텔레그램 알림 서비스 초기화 및 차량 검색 실패 감지 로직 추가
+- [x] **C매장 UI 테스트**: 텔레그램 알림 서비스 초기화 및 차량 검색 실패 감지 로직 추가
+- [x] **D매장 UI 테스트**: 새로운 파일 생성, 텔레그램 알림 서비스 초기화 및 차량 검색 실패 감지 로직 추가
+
+## 5. 텔레그램 알림 정책
+
+### 5.1 알림 조건
+- 차량 검색 실패 시 **즉시 알림**
+- 팝업 감지 시 **자동 팝업 닫기 후 알림**
+- 페이지 내용 감지 시에도 **알림**
+
+### 5.2 알림 형식
+```
+[성공] [매장ID매장] 차량 검색 실패 알림
+
+매장: 매장ID
+차량번호: 검색한차량번호
+상태: 검색된 차량이 없습니다
+```
+
+### 5.3 에러 처리
+- 텔레그램 서비스가 없으면 경고 로그
+- 알림 전송 실패 시 에러 로그
+- 차량 검색 실패는 ErrorCode.NO_VEHICLE로 로깅
+
+## 6. 장점
+
+### 6.1 코드 품질 향상
+- **중복 코드 제거**: 모든 매장의 동일한 로직을 BaseCrawler로 통합
+- **일관성 보장**: 모든 매장에서 동일한 방식으로 차량 검색 실패 처리
+- **유지보수성**: 로직 변경 시 BaseCrawler만 수정하면 모든 매장에 적용
+
+### 6.2 기능적 개선
+- **포괄적 감지**: 다양한 실패 메시지 패턴을 모두 감지
+- **자동 팝업 처리**: 실패 팝업 자동 닫기
+- **실시간 알림**: 즉시 텔레그램으로 상황 전파
+
+### 6.3 확장성
+- 새로운 매장 추가 시 공통 로직 자동 적용
+- 새로운 실패 메시지 패턴 추가 시 BaseCrawler만 수정
+
+## 7. 표준화 완료 요약 (2025년 8월)
+
+### 7.1 완료된 작업
+- ✅ **모든 매장 UI 테스트 파일에 텔레그램 알림 기능 표준화 적용**
+- ✅ **A매장**: 기존 파일 수정 (test_a_store_ui.py)
+- ✅ **B매장**: 새로운 파일 생성 (test_b_store_ui.py)
+- ✅ **C매장**: 기존 파일 수정 (test_c_store_ui.py)  
+- ✅ **D매장**: 새로운 파일 생성 (test_d_store_ui.py)
+
+### 7.2 표준화된 공통 기능
+1. **텔레그램 알림 서비스 초기화**
+   - `_initialize_notification_service()` 메서드
+   - base_config.yaml에서 텔레그램 설정 자동 로드
+   - StructuredLogger와 TelegramAdapter 통합
+
+2. **차량 검색 실패 알림**
+   - `_send_vehicle_not_found_notification()` 메서드
+   - ErrorContext DTO를 사용한 구조화된 에러 정보
+   - 매장별 store_id 자동 설정
+
+3. **일관된 에러 메시지 형식**
+   - 모든 매장에서 동일한 알림 형식 사용
+   - 한국 시간(KST) 자동 변환
+   - 차량번호, 매장, 실패 단계 정보 포함
+
+### 7.3 매장별 특화 적용
+- **A매장**: 기존 로직 유지, 텔레그램 알림만 추가
+- **B매장**: textbox[name="ID"] 등 고유 셀렉터 적용
+- **C매장**: 기존 로직 유지, 텔레그램 알림만 추가
+- **D매장**: #mf_wfm_body_ 계열 고유 셀렉터 적용
+
+### 7.4 테스트 검증 결과
+- A매장: ✅ 텔레그램 알림 전송 성공 확인
+- B매장: ✅ 텔레그램 서비스 초기화 성공 확인
+- C매장: ✅ 텔레그램 알림 코드 적용 완료
+- D매장: ✅ 텔레그램 알림 코드 적용 완료
+
+---
+
+이 정책은 프로젝트의 핵심 기능인 "차량 검색 실패 감지 및 알림"을 모든 매장에서 일관되게 처리하기 위한 통합 가이드라인입니다.

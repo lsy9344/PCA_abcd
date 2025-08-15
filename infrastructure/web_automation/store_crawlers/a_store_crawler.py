@@ -22,9 +22,8 @@ class AStoreCrawler(BaseCrawler, StoreRepository):
     """A매장 크롤러"""
     
     def __init__(self, store_config: Any, playwright_config: Dict[str, Any], structured_logger: StructuredLogger, notification_service: Optional[Any] = None):
-        super().__init__(store_config, playwright_config, structured_logger)
+        super().__init__(store_config, playwright_config, structured_logger, notification_service)
         self.logger = OptimizedLogger("a_store_crawler", "A")  # 최적화된 로거로 통일
-        self.notification_service = notification_service
     
     # login, search_vehicle 메서드는 변경 없음 ...
 
@@ -108,20 +107,8 @@ class AStoreCrawler(BaseCrawler, StoreRepository):
             # 검색 결과 대기
             await self.page.wait_for_timeout(1000)
             
-            # #parkName의 텍스트가 '검색된 차량이 없습니다.'인지 확인
-            try:
-                park_name_elem = self.page.locator('#parkName')
-                if await park_name_elem.count() > 0:
-                    park_name_text = await park_name_elem.inner_text()
-                    if '검색된 차량이 없습니다.' in park_name_text:
-                        self.logger.log_error(ErrorCode.NO_VEHICLE, "차량검색", f"차량번호 {vehicle.number} 검색 결과 없음")
-                        return False
-            except Exception:
-                pass
-            
-            # 기존: 검색 결과 확인
-            no_result = self.page.locator('text="검색된 차량이 없습니다"')
-            if await no_result.count() > 0:
+            # 공통 차량 검색 실패 감지 로직 사용 (설정 기반)
+            if await self.check_no_vehicle_found_by_config(self.page, vehicle.number):
                 self.logger.log_error(ErrorCode.NO_VEHICLE, "차량검색", f"차량번호 {vehicle.number} 검색 결과 없음")
                 return False
                 

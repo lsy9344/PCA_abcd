@@ -20,7 +20,7 @@ class CStoreCrawler(BaseCrawler, StoreRepository):
     """C 매장 전용 크롤러"""
     
     def __init__(self, store_config: Any, playwright_config: Dict[str, Any], structured_logger: Any, notification_service: Optional[Any] = None):
-        super().__init__(store_config, playwright_config, structured_logger)
+        super().__init__(store_config, playwright_config, structured_logger, notification_service)
         self.store_id = "C"
         
         # C 매장 yaml 설정 로드
@@ -35,7 +35,6 @@ class CStoreCrawler(BaseCrawler, StoreRepository):
             raise ValueError("C매장 로그인 정보가 환경 변수에 설정되지 않았습니다. .env 파일을 확인하세요.")
         
         self.user_id = self.username  # 기존 호환성 유지
-        self.notification_service = notification_service
         self.logger = OptimizedLogger("c_store_crawler", "C")
     
     def _load_c_store_config(self) -> Dict:
@@ -120,12 +119,8 @@ class CStoreCrawler(BaseCrawler, StoreRepository):
             # 검색 결과 로딩 대기
             await self.page.wait_for_timeout(3000)
             
-            # 검색 결과 없음 확인
-            no_result_selector = self.store_config.selectors['search']['no_result_message']
-            no_result = self.page.locator(no_result_selector)
-            if await no_result.count() > 0:
-                await self._handle_no_result_popup()
-                await self._send_no_vehicle_notification(car_number)
+            # 공통 차량 검색 실패 감지 로직 사용 (설정 기반)
+            if await self.check_no_vehicle_found_by_config(self.page, car_number):
                 self.logger.log_error(ErrorCode.NO_VEHICLE, "차량검색", f"차량번호 {car_number} 검색 결과 없음")
                 return False
             
@@ -243,9 +238,6 @@ class CStoreCrawler(BaseCrawler, StoreRepository):
         except Exception as e:
             self.logger.log_warning(f"[경고] 팝업 닫기 실패: {str(e)}")
 
-    async def _send_no_vehicle_notification(self, car_number: str):
-        """차량 검색 결과 없음 알림"""
-        self.logger.log_warning(f"[경고] C 매장에서 차량번호 '{car_number}' 검색 결과가 없습니다.")
 
     async def send_low_coupon_notification(self, coupon_name: str, coupon_count: int) -> None:
         """쿠폰 부족 텔레그램 알림"""
