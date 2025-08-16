@@ -59,6 +59,29 @@ selectors:
     apply_button: ".apply-btn"
     discount_history: "#discountHistory"
     
+    # 할인내역 테이블 셀렉터 (공통 쿠폰 계산기용)
+    # C 매장 특징: tbody ID 기반 식별
+    discount_selectors:
+      - "tbody[id='discountlist'] tr"  # C 매장 할인내역 테이블
+      - "#discountlist tr"             # ID만으로 접근
+      - "tbody#discountlist tr"        # tbody 명시
+    
+    # 쿠폰 이름 → 키 매핑 (공통 쿠폰 계산기용)
+    coupon_key_mapping:
+      "2시간 무료할인권": "FREE_2HOUR"
+      "무료 2시간할인": "FREE_2HOUR"
+      "1시간 유료할인권": "PAID_1HOUR"
+      "유료할인권": "PAID_1HOUR"
+      "유료할인": "PAID_1HOUR"
+    
+    # C 매장 테이블 데이터 구조 정보
+    table_structure:
+      description: "빈값 | 날짜 | 할인권명 | 수량"
+      coupon_name_cell_index: 2  # 쿠폰명이 있는 셀 인덱스 (0부터 시작)
+      quantity_cell_index: 3     # 수량이 있는 셀 인덱스
+      has_my_history: false      # C 매장은 my_history가 없음 (total_history만)
+      example: " | 2025-08-16 | 2시간 무료할인권 | 1매"
+    
   # 페이지 URL (추정)
   urls:
     login: "/login"
