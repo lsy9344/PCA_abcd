@@ -181,35 +181,8 @@ class AStoreCrawler(BaseCrawler, StoreRepository):
                     except Exception:
                         continue
             
-            # 우리 매장 쿠폰 내역 (#myDcList)
-            my_history = {}
-            try:
-                my_dc_rows = await self.page.locator('#myDcList tr').all()
-                for row in my_dc_rows:
-                    cells = await row.locator('td').all()
-                    if len(cells) >= 2:
-                        name = (await cells[0].inner_text()).strip()
-                        key = self.store_config.get_coupon_key(name)
-                        m = re.search(r'(\d+)', (await cells[1].inner_text()).strip())
-                        count = int(m.group(1)) if m else 0
-                        if key: my_history[key] = count
-            except Exception:
-                pass
-
-            # 전체 쿠폰 이력 (#allDcList)
-            total_history = {}
-            try:
-                total_rows = await self.page.locator('#allDcList tr').all()
-                for row in total_rows:
-                    cells = await row.locator('td').all()
-                    if len(cells) >= 2:
-                        name = (await cells[0].inner_text()).strip()
-                        key = self.store_config.get_coupon_key(name)
-                        m = re.search(r'(\d+)', (await cells[1].inner_text()).strip())
-                        count = int(m.group(1)) if m else 0
-                        if key: total_history[key] = count
-            except Exception:
-                pass
+            # 공통 쿠폰 계산기를 사용한 할인내역 파싱 (YAML 설정 기반)
+            my_history, total_history = await self._parse_applied_coupons_with_common_calculator()
             
             # 보유 쿠폰량 체크 및 부족 시 텔레그램 알림 (유료 쿠폰만)
             for coupon_name, counts in available_coupons.items():
@@ -296,6 +269,31 @@ class AStoreCrawler(BaseCrawler, StoreRepository):
         except Exception as e:
             self.logger.log_error(ErrorCode.FAIL_APPLY, "쿠폰적용", str(e))
             return False
+
+    async def _parse_applied_coupons_with_common_calculator(self):
+        """공통 쿠폰 계산기를 사용한 할인내역 파싱 - YAML 설정 파일 기반"""
+        from shared.utils.common_coupon_calculator import CommonCouponCalculator
+        import yaml
+        from pathlib import Path
+        
+        try:
+            # YAML 설정 파일에서 직접 로드
+            config_path = Path("infrastructure/config/store_configs/a_store_config.yaml")
+            with open(config_path, 'r', encoding='utf-8') as f:
+                store_config = yaml.safe_load(f)
+            
+            # 쿠폰 설정 추출
+            coupon_config = store_config['selectors']['coupons']
+            
+            return await CommonCouponCalculator.parse_applied_coupons(
+                self.page,
+                coupon_config["coupon_key_mapping"],
+                coupon_config["discount_selectors"],
+                has_my_history=coupon_config["table_structure"]["has_my_history"]
+            )
+        except Exception as e:
+            self.logger.log_error(ErrorCode.FAIL_PARSE, "할인내역파싱", str(e))
+            return {}, {}
 
     async def send_low_coupon_notification(self, coupon_name: str, coupon_count: int) -> None:
         """쿠폰 부족 텔레그램 알림 (CloudWatch Logs 비용 최적화 적용)"""

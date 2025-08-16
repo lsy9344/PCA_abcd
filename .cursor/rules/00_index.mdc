@@ -43,8 +43,11 @@ description: "프로젝트 문서 읽기 순서와 구조 가이드"
 ### 4️⃣ **구현 세부사항**
 | 순서 | 파일명 | 설명 | 중요도 |
 |------|--------|------|--------|
-| 9 | `20_selectors.mdc` | 웹 셀렉터 관리 정책 | ⭐⭐ |
-| 10 | `30_error_policy.mdc` | 에러 처리 및 로깅 정책 | ⭐⭐ |
+| 9 | `13_store_coupon_comparison.mdc` | 매장별 쿠폰 시스템 비교 | ⭐⭐ |
+| 10 | `14_store_special_conditions.mdc` | 매장별 특수 조건 및 예외 | ⭐⭐ |
+| 11 | `15_current_implementation.mdc` | 현재 구현된 쿠폰 파싱 로직 | ⭐⭐⭐ |
+| 12 | `20_selectors.mdc` | 웹 셀렉터 관리 정책 | ⭐⭐ |
+| 13 | `30_error_policy.mdc` | 에러 처리 및 로깅 정책 | ⭐⭐ |
 
 ---
 
@@ -53,10 +56,10 @@ description: "프로젝트 문서 읽기 순서와 구조 가이드"
 ### 5️⃣ **특수 조건 및 경험**
 | 순서 | 파일명 | 설명 | 참조 시점 |
 |------|--------|------|----------|
-| 11 | `50_special_conditions.mdc` | 특수 조건 및 예외 처리 | 특수 케이스 구현 시 |
-| 12 | `90_testing_lessons.mdc` | 매장 테스트 경험 및 문제 해결 | 새 매장 추가 시 |
-| 13 | `91_server_caching.mdc` | 서버 캐싱 및 테스트 환경 관리 | 개발 환경 설정 시 |
-| 14 | `99_coding_standards.mdc` | 코딩 표준 및 권장 습관 | 코드 작성 시 |
+| 14 | `50_special_conditions.mdc` | 특수 조건 및 예외 처리 | 특수 케이스 구현 시 |
+| 15 | `90_testing_lessons.mdc` | 매장 테스트 경험 및 문제 해결 | 새 매장 추가 시 |
+| 16 | `91_server_caching.mdc` | 서버 캐싱 및 테스트 환경 관리 | 개발 환경 설정 시 |
+| 17 | `99_coding_standards.mdc` | 코딩 표준 및 권장 습관 | 코드 작성 시 |
 
 ---
 
@@ -86,13 +89,14 @@ description: "프로젝트 문서 읽기 순서와 구조 가이드"
 ## 🔗 빠른 참조
 
 ### **자주 찾는 정보**
-- **쿠폰 계산 로직**: `10_discount_logic.mdc` + `11_calculation_principles.mdc`
+- **쿠폰 계산 로직**: `10_discount_logic.mdc` + `11_calculation_principles.mdc` + `15_current_implementation.mdc`
 - **새 매장 추가**: `04_base_store_design.mdc` + `90_testing_lessons.mdc`
 - **에러 해결**: `30_error_policy.mdc` + `91_server_caching.mdc`
 - **셀렉터 관리**: `20_selectors.mdc`
 - **코딩 규칙**: `99_coding_standards.mdc`
 
 ### **문서 업데이트 이력**
+- 2024-08-15: 현재 구현 로직 문서 추가 (15_current_implementation.mdc)
 - 2024-01-15: 문서 구조 재정리 및 인덱스 생성
 - 기존: 개별 문서들의 점진적 업데이트
 

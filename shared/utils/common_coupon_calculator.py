@@ -65,7 +65,7 @@ class CommonCouponCalculator:
                             # 각 행의 셀들 가져오기
                             cells = await row.locator('td').all()
                             
-                            if len(cells) >= 4:  # C 매장: 최소 4개 셀 필요 (빈값, 날짜, 할인권명, 수량)
+                            if len(cells) >= 4:  # 최소 4개 셀 필요
                                 # 셀 내용 추출
                                 cell_texts = []
                                 for cell in cells:
@@ -74,26 +74,39 @@ class CommonCouponCalculator:
                                 
                                 print(f"     📝 행 {row_idx + 1}: {' | '.join(cell_texts[:5])}")  # 처음 5개 셀 출력
                                 
-                                # C 매장 구조: 3번째 셀(인덱스 2) = 할인권명, 4번째 셀(인덱스 3) = 수량
+                                # 매장별 데이터 구조 처리
                                 if len(cell_texts) >= 4:
-                                    coupon_cell = cell_texts[2]  # 3번째 셀 (할인권명)
-                                    quantity_cell = cell_texts[3]  # 4번째 셀 (수량)
+                                    # B매장 구조: 번호(0) | 할인값(1) | 등록자(2) | 등록일(3)
+                                    # C매장 구조: 빈값(0) | 날짜(1) | 할인권명(2) | 수량(3)
                                     
-                                    # 쿠폰 이름 매핑 확인
-                                    for mapped_name, coupon_key in coupon_key_mapping.items():
-                                        if mapped_name in coupon_cell:
-                                            # 수량 숫자 추출 ("1매" -> 1)
-                                            import re
-                                            quantity_match = re.search(r'(\d+)', quantity_cell)
-                                            quantity = int(quantity_match.group(1)) if quantity_match else 1
-                                            
-                                            # C 매장은 total_history만 사용
-                                            if has_my_history:
-                                                my_history[coupon_key] = my_history.get(coupon_key, 0) + quantity
-                                            total_history[coupon_key] = total_history.get(coupon_key, 0) + quantity
-                                            
-                                            print(f"     ✅ 적용된 쿠폰 발견: {mapped_name} {quantity}개 -> {coupon_key}")
-                                            break
+                                    # B매장인지 C매장인지 판별 (할인값 칼럼 위치로 구분)
+                                    coupon_cell = None
+                                    quantity = 1  # 기본값
+                                    
+                                    # B매장 패턴: 2번째 칼럼에 "무료 1시간할인", "유료 30분할인" 등이 있음
+                                    if any(name in cell_texts[1] for name in ["무료 1시간할인", "유료 30분할인", "무료", "유료"]):
+                                        coupon_cell = cell_texts[1]  # B매장: 2번째 셀 (할인값)
+                                        quantity = 1  # B매장은 항상 1개씩
+                                    # C매장 패턴: 3번째 칼럼에 할인권명이 있음
+                                    elif any(name in cell_texts[2] for name in ["무료", "유료", "할인권"]):
+                                        coupon_cell = cell_texts[2]  # C매장: 3번째 셀 (할인권명)
+                                        quantity_cell = cell_texts[3]  # C매장: 4번째 셀 (수량)
+                                        # 수량 숫자 추출 ("1매" -> 1)
+                                        import re
+                                        quantity_match = re.search(r'(\d+)', quantity_cell)
+                                        quantity = int(quantity_match.group(1)) if quantity_match else 1
+                                    
+                                    if coupon_cell:
+                                        # 쿠폰 이름 매핑 확인
+                                        for mapped_name, coupon_key in coupon_key_mapping.items():
+                                            if mapped_name in coupon_cell:
+                                                # 적용된 쿠폰 카운트
+                                                if has_my_history:
+                                                    my_history[coupon_key] = my_history.get(coupon_key, 0) + quantity
+                                                total_history[coupon_key] = total_history.get(coupon_key, 0) + quantity
+                                                
+                                                print(f"     ✅ 적용된 쿠폰 발견: {mapped_name} {quantity}개 -> {coupon_key}")
+                                                break
                                         
                         except Exception as e:
                             print(f"     ⚠️ 행 파싱 오류: {str(e)}")
@@ -231,14 +244,19 @@ class StoreConfig:
             },
             "B": {
                 "coupon_key_mapping": {
-                    "무료 1시간할인": "FREE_COUPON",
-                    "유료 30분할인": "PAID_COUPON"
+                    "무료 1시간할인": "FREE_1HOUR",
+                    "유료 30분할인": "PAID_30MIN"
                 },
                 "coupon_durations": {
-                    "FREE_COUPON": 60,
-                    "PAID_COUPON": 30
+                    "FREE_1HOUR": 60,
+                    "PAID_30MIN": 30
                 },
-                "discount_selectors": [".discount-list tr", "#discountHistory tr"]
+                "discount_selectors": [
+                    "tr.ev_dhx_skyblue",
+                    "tr.odd_dhx_skyblue",
+                    ".gridbox tr",
+                    "#gridbox tr"
+                ]
             },
             "C": {
                 "coupon_key_mapping": {

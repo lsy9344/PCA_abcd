@@ -55,8 +55,28 @@ selectors:
   coupons:
     free_1hour_link: 'a:has-text("무료 1시간할인")'  # line 293: 무료 1시간할인 링크
     paid_30min_link: 'a:has-text("유료 30분할인")'  # line 293: 유료 30분할인 링크
-    discount_rows: 'tr.ev_dhx_skyblue, tr.odd_dhx_skyblue'  # line 254, 332: 할인내역 테이블 행
     remaining_amount: 'text=남은잔여량'  # line 223: 남은잔여량 텍스트
+    
+    # 할인내역 테이블 셀렉터 (2025-08-16 파싱 문제 해결로 업데이트)
+    # 우선순위 순으로 시도 - 공통 쿠폰 계산기에서 사용
+    discount_selectors:
+      - "tr.ev_dhx_skyblue"     # B 매장 기본 행 (짝수)
+      - "tr.odd_dhx_skyblue"    # B 매장 홀수 행  
+      - "tr.rowselected"        # 선택된 행
+      - "#gridDtl tr"           # 할인내역 그리드 내 행
+      - ".gridbox tr"           # 그리드박스 내 행
+    
+    # 쿠폰 이름 → 키 매핑 (공통 쿠폰 계산기용)
+    coupon_key_mapping:
+      "무료 1시간할인": "FREE_COUPON"
+      "유료 30분할인": "PAID_COUPON"
+    
+    # B 매장 테이블 데이터 구조 정보
+    table_structure:
+      description: "번호 | 할인값 | 등록자 | 등록일"
+      coupon_name_cell_index: 1  # 쿠폰명이 있는 셀 인덱스 (0부터 시작)
+      quantity_per_row: 1        # B 매장은 항상 행당 1개 쿠폰
+      example: "1 | 유료 30분할인 | 215(이수열) | 2025-08-16 08:59:07.977"
   
   # 페이지 URL
   urls:

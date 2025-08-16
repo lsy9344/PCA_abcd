@@ -1,4 +1,16 @@
-# 6. 현재 적용된 쿠폰 파싱 및 차감 계산 로직
+---
+title: "현재 적용된 쿠폰 파싱 및 차감 계산 로직"
+order: 15
+category: "implementation"
+alwaysApply: true
+tags: ["current", "parsing", "calculation", "implementation"]
+lastUpdated: "2024-01-15"
+description: "현재 구현된 쿠폰 파싱 및 차감 계산 통합 로직 가이드"
+---
+
+# 현재 적용된 쿠폰 파싱 및 차감 계산 로직
+
+> **⚠️ 이 문서는 현재 구현되어 운영 중인 쿠폰 시스템의 실제 동작 방식을 설명합니다.**
 
 ## 개요
 
@@ -248,4 +260,4 @@ def _calculate_required_coupons(self, my_history, total_history):
 
 ---
 
-이 문서는 모든 매장에서 현재 적용된 쿠폰을 정확히 파싱하고 차감하여 필요한 쿠폰만 계산하는 통합 로직을 제시합니다. 
+이 문서는 모든 매장에서 현재 적용된 쿠폰을 정확히 파싱하고 차감하여 필요한 쿠폰만 계산하는 통합 로직을 제시합니다.

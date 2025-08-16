@@ -86,12 +86,13 @@ class BStoreCrawler(BaseCrawler, StoreRepository):
             return False
 
     async def get_coupon_history(self, vehicle: Vehicle) -> CouponHistory:
-        """쿠폰 이력 조회 - B 매장 전용 구현"""
+        """쿠폰 이력 조회 - B 매장 통합 로직 사용"""
         try:
-            my_history = {}
-            total_history = {}
-            discount_info = {}
+            # 통합 로직을 사용하여 현재 적용된 쿠폰 파싱
+            my_history, total_history = await self._parse_current_applied_coupons()
             
+            # 사용 가능한 쿠폰 정보 (기존 로직 유지)
+            discount_info = {}
             discount_info['무료 1시간할인'] = {'car': 999, 'total': 999}
             
             remaining_amount_text = await self._check_remaining_amount_on_current_page(self.page)
@@ -101,8 +102,6 @@ class BStoreCrawler(BaseCrawler, StoreRepository):
                 self.logger.log_info("[정보] 현재 페이지에서 남은잔여량 정보를 찾을 수 없음")
                 paid_coupon_name = "유료 30분할인 (판매 : 300 )"
                 discount_info[paid_coupon_name] = {'car': 0, 'total': 0}
-            
-            await self._analyze_discount_history(self.page, my_history, total_history)
             
             return CouponHistory(
                 store_id=self.store_id,
@@ -131,13 +130,23 @@ class BStoreCrawler(BaseCrawler, StoreRepository):
             total_applied = 0
             for coupon_name, count in coupons_to_apply.items():
                 if count > 0:
-                    coupon_type = 'FREE_1HOUR' if '무료' in coupon_name else 'PAID_30MIN'
-                    for i in range(count):
-                        if await self._apply_single_coupon(self.page, coupon_type, i + 1):
-                            total_applied += 1
-                        else:
-                            self.logger.log_error(ErrorCode.FAIL_APPLY, "쿠폰적용", f"{coupon_name} {i + 1}개 적용 실패")
-                            return False
+                    # 쿠폰 이름을 통합 키로 매핑
+                    coupon_type = None
+                    if '무료' in coupon_name or 'FREE_1HOUR' in coupon_name:
+                        coupon_type = 'FREE_1HOUR'
+                    elif '유료' in coupon_name or 'PAID_30MIN' in coupon_name:
+                        coupon_type = 'PAID_30MIN'
+                    
+                    if coupon_type:
+                        for i in range(count):
+                            if await self._apply_single_coupon(self.page, coupon_type, i + 1):
+                                total_applied += 1
+                            else:
+                                self.logger.log_error(ErrorCode.FAIL_APPLY, "쿠폰적용", f"{coupon_name} {i + 1}개 적용 실패")
+                                return False
+                    else:
+                        self.logger.log_error(ErrorCode.FAIL_APPLY, "쿠폰적용", f"알 수 없는 쿠폰 타입: {coupon_name}")
+                        return False
             
             if total_applied > 0:
                 self.logger.log_info(f"[완료] B 쿠폰 적용 완료: 총 {total_applied}개")
@@ -149,6 +158,27 @@ class BStoreCrawler(BaseCrawler, StoreRepository):
         except Exception as e:
             self.logger.log_error(ErrorCode.FAIL_APPLY, "쿠폰적용", str(e))
             return False
+
+    async def _parse_current_applied_coupons(self):
+        """통합 쿠폰 파싱 로직 사용 - YAML 설정 파일 기반"""
+        from shared.utils.common_coupon_calculator import CommonCouponCalculator
+        import yaml
+        from pathlib import Path
+        
+        # YAML 설정 파일에서 직접 로드
+        config_path = Path("infrastructure/config/store_configs/b_store_config.yaml")
+        with open(config_path, 'r', encoding='utf-8') as f:
+            store_config = yaml.safe_load(f)
+        
+        # 쿠폰 설정 추출
+        coupon_config = store_config['selectors']['coupons']
+        
+        return await CommonCouponCalculator.parse_applied_coupons(
+            self.page,
+            coupon_config["coupon_key_mapping"],
+            coupon_config["discount_selectors"],
+            has_my_history=True
+        )
 
     async def _handle_popups(self, page: Page):
         """팝업 처리"""
@@ -226,40 +256,6 @@ class BStoreCrawler(BaseCrawler, StoreRepository):
         except Exception as e:
             self.logger.log_error(ErrorCode.FAIL_PARSE, "남은잔여량파싱", str(e))
 
-    async def _analyze_discount_history(self, page: Page, my_history: Dict, total_history: Dict):
-        """할인등록현황 테이블 분석"""
-        try:
-            data_rows = page.locator('tr.ev_dhx_skyblue, tr.odd_dhx_skyblue')
-            for i in range(await data_rows.count()):
-                row = data_rows.nth(i)
-                cells = await row.locator('td').all_text_contents()
-                if len(cells) >= 4:
-                    await self._process_discount_row(cells, my_history, total_history)
-        except Exception as e:
-            self.logger.log_error(ErrorCode.FAIL_PARSE, "할인내역분석", str(e))
-
-    async def _process_discount_row(self, cell_contents: List[str], my_history: Dict, total_history: Dict):
-        """할인 데이터 행 처리"""
-        try:
-            discount_value = cell_contents[1].strip()
-            registrant = cell_contents[2].strip()
-            coupon_type = self._extract_coupon_type(discount_value)
-            if coupon_type:
-                total_history[coupon_type] = total_history.get(coupon_type, 0) + 1
-                registrant_id = registrant.split('(')[0].strip()
-                if registrant_id == self.user_id:
-                    my_history[coupon_type] = my_history.get(coupon_type, 0) + 1
-        except Exception as e:
-            self.logger.log_warning(f"[경고] 할인 행 처리 중 오류: {str(e)}")
-
-    def _extract_coupon_type(self, discount_value: str) -> Optional[str]:
-        """할인값에서 쿠폰 타입 추출"""
-        if "무료 1시간할인" in discount_value: return "FREE_1HOUR"
-        if "무료 30분할인" in discount_value: return "FREE_30MIN"
-        if "유료 30분할인" in discount_value: return "PAID_30MIN"
-        if "유료 1시간할인" in discount_value: return "PAID_1HOUR"
-        self.logger.log_warning(f"[경고] 알 수 없는 할인 타입: {discount_value}")
-        return None
 
     async def _apply_single_coupon(self, page: Page, coupon_type: str, sequence: int) -> bool:
         """단일 쿠폰 적용"""

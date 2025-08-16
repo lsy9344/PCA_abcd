@@ -70,6 +70,28 @@ selectors:
     all_dc_rows: "#allDcList tr"
     apply_button: 'button:has-text("적용")'
     apply_button_prefix: "#apply_"
+    
+    # 할인내역 테이블 셀렉터 (공통 쿠폰 계산기용)
+    # A 매장 특징: ID 기반 테이블 식별
+    discount_selectors:
+      - "#myDcList tr"          # 우리 매장 할인 내역
+      - "#allDcList tr"         # 전체 할인 내역
+      - "tbody#myDcList tr"     # tbody를 명시한 우리 매장 할인 내역
+      - "tbody#allDcList tr"    # tbody를 명시한 전체 할인 내역
+    
+    # 쿠폰 이름 → 키 매핑 (공통 쿠폰 계산기용)
+    coupon_key_mapping:
+      "30분할인권(무료)": "FREE_COUPON"
+      "1시간할인권(유료)": "PAID_COUPON"
+      "1시간주말할인권(유료)": "WEEKEND_COUPON"
+    
+    # A 매장 테이블 데이터 구조 정보
+    table_structure:
+      description: "날짜 | 할인권명 | 수량"
+      coupon_name_cell_index: 2  # 쿠폰명이 있는 셀 인덱스 (0부터 시작)
+      quantity_cell_index: 3     # 수량이 있는 셀 인덱스
+      has_my_history: true       # A 매장은 my_history와 total_history 구분
+      example: "2025-08-16 | 30분할인권(무료) | 1매"
 
 # 차량 검색 실패 감지 설정
 search_failure_detection:

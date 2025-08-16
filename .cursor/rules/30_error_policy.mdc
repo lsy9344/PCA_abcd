@@ -174,4 +174,138 @@ def _remove_emojis(self, text: str) -> str:
 
 ---
 
+## 7. Playwright 페이지 상태 안전성 검사 패턴
+
+### 7.1 페이지 생명주기 관리 문제
+Playwright 자동화에서 페이지가 예상보다 일찍 닫히거나 무효화되어 발생하는 오류들:
+```
+Target page, context or browser has been closed
+Cannot read properties of null (reading 'url')
+Page has been closed
+```
+
+### 7.2 필수 안전성 검사 패턴
+
+#### **🔒 모든 DOM 접근 전 페이지 상태 확인**
+```python
+async def _parse_current_applied_coupons(self):
+    try:
+        # STEP 1: 페이지 닫힘 상태 확인
+        if self.page.is_closed():
+            print("     ⚠️ 페이지가 이미 닫혔습니다 - 파싱 불가")
+            return {}, {}
+        
+        # STEP 2: URL 접근 가능성 확인
+        try:
+            current_url = self.page.url
+            print(f"     🔍 현재 페이지 URL: {current_url}")
+        except Exception as e:
+            print(f"     ⚠️ 페이지 상태 확인 실패: {str(e)}")
+            return {}, {}
+        
+        # 안전한 상태에서 실제 DOM 조작 진행...
+        
+    except Exception as e:
+        print(f"   ⚠️ 파싱 실패: {str(e)}")
+        return {}, {}
+```
+
+#### **🔒 스크린샷 저장 시 안전성 검사**
+```python
+async def _save_screenshot(self, step_name):
+    try:
+        if self.page and not self.page.is_closed():
+            screenshot_path = f"screenshots/{step_name}.png"
+            await self.page.screenshot(path=screenshot_path)
+            self.logger.info(f"[성공] 스크린샷 저장: {screenshot_path}")
+        else:
+            self.logger.warning(f"[경고] 페이지 닫힘으로 스크린샷 불가: {step_name}")
+    except Exception as e:
+        self.logger.error(f"[실패] 스크린샷 저장 오류: {str(e)}")
+```
+
+#### **🔒 최종 검증 단계 안전성 검사**
+```python
+# finally 블록에서의 안전한 정리 작업
+finally:
+    try:
+        if not self.page.is_closed():
+            # 최종 검증 수행
+            await self._final_verification()
+            await self._save_screenshot("final_state")
+        else:
+            print("   ⚠️ 페이지가 닫혀서 최종 검증을 건너뜁니다")
+    except Exception as verification_error:
+        print(f"   ⚠️ 최종 검증 실패: {str(verification_error)}")
+```
+
+### 7.3 페이지 상태 체크 순서
+
+#### **✅ 올바른 안전성 검사 순서**
+```python
+# 1. 객체 존재 확인
+if not self.page:
+    return False
+
+# 2. 페이지 닫힘 상태 확인  
+if self.page.is_closed():
+    return False
+
+# 3. URL 접근 가능성 확인
+try:
+    current_url = self.page.url
+except Exception:
+    return False
+
+# 4. DOM 요소 접근 수행
+# 이제 안전하게 locator 사용 가능
+```
+
+#### **❌ 잘못된 패턴**
+```python
+# 바로 DOM 접근 시도 (위험)
+try:
+    rows = await self.page.locator("tr").all()  # 페이지가 닫혔을 수 있음
+except Exception:
+    pass  # 너무 늦은 예외 처리
+```
+
+### 7.4 에러 코드 표준화
+
+| 상황 | 에러 코드 | 로그 메시지 |
+|------|-----------|-------------|
+| 페이지 닫힘 | `PAGE_CLOSED` | `[매장][단계] PAGE_CLOSED` |
+| URL 접근 불가 | `PAGE_INVALID` | `[매장][단계] PAGE_INVALID` |
+| DOM 요소 없음 | `ELEMENT_NOT_FOUND` | `[매장][단계] ELEMENT_NOT_FOUND` |
+| 타임아웃 | `TIMEOUT` | `[매장][단계] TIMEOUT` |
+
+### 7.5 체크리스트: 안전한 Playwright 코드
+
+#### **✅ DOM 접근 전 필수 체크**
+```bash
+□ self.page 객체 존재 확인
+□ self.page.is_closed() 호출
+□ self.page.url 접근 가능성 확인
+□ 예외 처리 블록으로 감싸기
+□ 실패 시 안전한 기본값 반환
+```
+
+#### **✅ 스크린샷/파일 저장 시**
+```bash
+□ 페이지 상태 확인 후 저장
+□ 실패 시 경고 메시지만 출력
+□ 프로세스 중단하지 않음
+```
+
+#### **✅ finally 블록 처리**
+```bash
+□ 정리 작업 전 페이지 상태 확인
+□ 페이지 닫힘 시 정리 작업 생략
+□ 예외 발생해도 프로세스 계속 진행
+```
+
+이 패턴을 통해 Playwright 페이지 생명주기로 인한 예기치 않은 오류를 방지하고 안정적인 자동화를 구현할 수 있습니다.
+
+---
+
 이 문서는 AWS CloudWatch Logs 비용을 최소화하면서도 시스템의 안정성과 모니터링 기능을 유지하고, Windows 환경에서도 안정적인 로깅이 가능하도록 하는 최적화된 로깅 전략을 제시한다.
