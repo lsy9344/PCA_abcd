@@ -65,7 +65,7 @@ class CommonCouponCalculator:
                             # 각 행의 셀들 가져오기
                             cells = await row.locator('td').all()
                             
-                            if len(cells) >= 4:  # 최소 4개 셀 필요
+                            if len(cells) >= 3:  # A매장은 3개 셀, B/C매장은 4개 셀
                                 # 셀 내용 추출
                                 cell_texts = []
                                 for cell in cells:
@@ -75,26 +75,39 @@ class CommonCouponCalculator:
                                 print(f"     📝 행 {row_idx + 1}: {' | '.join(cell_texts[:5])}")  # 처음 5개 셀 출력
                                 
                                 # 매장별 데이터 구조 처리
-                                if len(cell_texts) >= 4:
+                                if len(cell_texts) >= 3:
+                                    # A매장 구조: 날짜(0) | 할인권명(1) | 수량(2)
                                     # B매장 구조: 번호(0) | 할인값(1) | 등록자(2) | 등록일(3)
                                     # C매장 구조: 빈값(0) | 날짜(1) | 할인권명(2) | 수량(3)
                                     
-                                    # B매장인지 C매장인지 판별 (할인값 칼럼 위치로 구분)
                                     coupon_cell = None
                                     quantity = 1  # 기본값
                                     
-                                    # B매장 패턴: 2번째 칼럼에 "무료 1시간할인", "유료 30분할인" 등이 있음
-                                    if any(name in cell_texts[1] for name in ["무료 1시간할인", "유료 30분할인", "무료", "유료"]):
+                                    # A매장 패턴: 3개 셀이고 1번째 셀(인덱스 0)에 "30분할인권(무료)", "1시간할인권(유료)" 등이 있음
+                                    if len(cell_texts) == 3 and any(pattern in cell_texts[0] for pattern in ["30분할인권(무료)", "1시간할인권(유료)", "1시간주말할인권(유료)"]):
+                                        coupon_cell = cell_texts[0]  # A매장: 1번째 셀 (할인권명)
+                                        quantity_cell = cell_texts[1]  # A매장: 2번째 셀 (수량)
+                                        # 수량 숫자 추출 ("1회" -> 1)
+                                        import re
+                                        quantity_match = re.search(r'(\d+)', quantity_cell)
+                                        quantity = int(quantity_match.group(1)) if quantity_match else 1
+                                        print(f"     🅰️ A매장 패턴 감지: {coupon_cell} {quantity}개")
+                                    
+                                    # B매장 패턴: 4개 셀이고 2번째 칼럼에 "무료 1시간할인", "유료 30분할인" 등이 있음
+                                    elif len(cell_texts) >= 4 and any(name in cell_texts[1] for name in ["무료 1시간할인", "유료 30분할인", "무료", "유료"]):
                                         coupon_cell = cell_texts[1]  # B매장: 2번째 셀 (할인값)
                                         quantity = 1  # B매장은 항상 1개씩
-                                    # C매장 패턴: 3번째 칼럼에 할인권명이 있음
-                                    elif any(name in cell_texts[2] for name in ["무료", "유료", "할인권"]):
+                                        print(f"     🅱️ B매장 패턴 감지: {coupon_cell}")
+                                    
+                                    # C매장 패턴: 4개 셀이고 3번째 칼럼에 할인권명이 있음
+                                    elif len(cell_texts) >= 4 and any(name in cell_texts[2] for name in ["무료", "유료", "할인권"]):
                                         coupon_cell = cell_texts[2]  # C매장: 3번째 셀 (할인권명)
                                         quantity_cell = cell_texts[3]  # C매장: 4번째 셀 (수량)
                                         # 수량 숫자 추출 ("1매" -> 1)
                                         import re
                                         quantity_match = re.search(r'(\d+)', quantity_cell)
                                         quantity = int(quantity_match.group(1)) if quantity_match else 1
+                                        print(f"     🅲 C매장 패턴 감지: {coupon_cell} {quantity}개")
                                     
                                     if coupon_cell:
                                         # 쿠폰 이름 매핑 확인

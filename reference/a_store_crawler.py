@@ -3,11 +3,10 @@ A매장 크롤러 구현 - get_coupon_history 인수 수정된 버전
 """
 import re
 import asyncio
-from typing import List, Dict, Tuple, Optional, Any
+from typing import List, Dict, Tuple
 from playwright.async_api import TimeoutError
 
 from infrastructure.web_automation.base_crawler import BaseCrawler
-from core.domain.repositories.store_repository import StoreRepository
 from core.domain.models.vehicle import Vehicle
 from core.domain.models.coupon import CouponHistory, CouponApplication
 from shared.exceptions.automation_exceptions import (
@@ -16,18 +15,20 @@ from shared.exceptions.automation_exceptions import (
 from infrastructure.config.config_manager import ConfigManager
 from infrastructure.logging.structured_logger import StructuredLogger
 from utils.optimized_logger import OptimizedLogger, ErrorCode
+from utils.optimized_logger import get_optimized_logger
 
 
-class AStoreCrawler(BaseCrawler, StoreRepository):
+class AStoreCrawler(BaseCrawler):
     """A매장 크롤러"""
     
-    def __init__(self, store_config: Any, playwright_config: Dict[str, Any], structured_logger: StructuredLogger, notification_service: Optional[Any] = None):
-        super().__init__(store_config, playwright_config, structured_logger, notification_service)
-        self.logger = OptimizedLogger("a_store_crawler", "A")  # 최적화된 로거로 통일
+    def __init__(self, store_config, playwright_config, structured_logger: StructuredLogger, notification_service=None):
+        super().__init__(store_config, playwright_config, structured_logger)
+        self.logger = OptimizedLogger("a_store_crawler", "A")  # 최적화된 로거 사용
+        self.notification_service = notification_service
     
     # login, search_vehicle 메서드는 변경 없음 ...
 
-    async def login(self, vehicle: Optional[Vehicle] = None) -> bool:
+    async def login(self, vehicle: Vehicle = None) -> bool:
         """로그인 수행 (팝업 처리 포함)"""
         try:
             await self._initialize_browser()
@@ -121,7 +122,7 @@ class AStoreCrawler(BaseCrawler, StoreRepository):
             # 기존: 검색 결과 확인
             no_result = self.page.locator('text="검색된 차량이 없습니다"')
             if await no_result.count() > 0:
-                self.logger.log_error(ErrorCode.NO_VEHICLE, "차량검색", f"차량번호 {vehicle.number} 검색 결과 없음")
+                details = self.logger.log_error("A", "차량검색", "NO_VEHICLE", f"차량번호 {vehicle.number} 검색 결과 없음")
                 return False
                 
             # 차량 선택 버튼 클릭
@@ -137,7 +138,7 @@ class AStoreCrawler(BaseCrawler, StoreRepository):
                         self.logger.log_info('[차량검색] button:has-text("차량 선택") 버튼 클릭 성공')
                     await self.page.wait_for_timeout(3000)
                 except Exception as e2:
-                    self.logger.log_error(ErrorCode.FAIL_SEARCH, "차량검색", f"차량 선택 버튼 클릭 실패: {str(e1)}, {str(e2)}")
+                    details = self.logger.log_error("A", "차량검색", "FAIL_SEARCH", f"차량 선택 버튼 클릭 실패: {str(e1)}, {str(e2)}")
                     return False
             
             # 개발 환경에서만 성공 로그 기록
@@ -146,7 +147,7 @@ class AStoreCrawler(BaseCrawler, StoreRepository):
             return True
             
         except Exception as e:
-            self.logger.log_error(ErrorCode.FAIL_SEARCH, "차량검색", str(e))
+            details = self.logger.log_error("A", "차량검색", "FAIL_SEARCH", str(e))
             return False
 
     # [수정] 여기를 수정했습니다.
@@ -193,75 +194,35 @@ class AStoreCrawler(BaseCrawler, StoreRepository):
                     except Exception:
                         continue
             
-            # 우리 매장 쿠폰 내역 (tbody#myDcList)
+            # 우리 매장 쿠폰 내역 (#myDcList)
             my_history = {}
             try:
-                # 여러 셀렉터 시도 (tbody#myDcList 또는 #myDcList)
-                my_dc_rows = await self.page.locator('tbody#myDcList tr').all()
-                if not my_dc_rows:
-                    my_dc_rows = await self.page.locator('#myDcList tr').all()
-                
+                my_dc_rows = await self.page.locator('#myDcList tr').all()
                 for row in my_dc_rows:
                     cells = await row.locator('td').all()
-                    # A매장 테이블 구조: [날짜, 할인권명, 수량]
-                    if len(cells) >= 3:
-                        # 할인권명은 1번째 셀 (인덱스 1)
-                        name = (await cells[1].inner_text()).strip()
-                        # 수량은 2번째 셀 (인덱스 2)
-                        count_text = (await cells[2].inner_text()).strip()
-                        m = re.search(r'(\d+)', count_text)
+                    if len(cells) >= 2:
+                        name = (await cells[0].inner_text()).strip()
+                        key = self.store_config.get_coupon_key(name)
+                        m = re.search(r'(\d+)', (await cells[1].inner_text()).strip())
                         count = int(m.group(1)) if m else 0
-                        
-                        # 실제 쿠폰명으로 직접 매핑
-                        if '30분할인권(무료)' in name:
-                            my_history['free_30min'] = count
-                        elif '1시간할인권(무료)' in name:
-                            my_history['free_1hour'] = count
-                        elif '1시간할인권(유료)' in name:
-                            my_history['paid_1hour'] = count
-                        elif '1시간주말할인권(유료)' in name:
-                            my_history['paid_1hour_weekend'] = count
-                        
-                        if self.logger.should_log_info():
-                            self.logger.log_info(f"[쿠폰파싱] 우리매장: {name} -> {count}개")
-            except Exception as e:
-                if self.logger.should_log_info():
-                    self.logger.log_info(f"[쿠폰파싱] myDcList 파싱 오류: {str(e)}")
+                        if key: my_history[key] = count
+            except Exception:
+                pass
 
-            # 전체 쿠폰 이력 (tbody#allDcList)
+            # 전체 쿠폰 이력 (#allDcList)
             total_history = {}
             try:
-                # 여러 셀렉터 시도 (tbody#allDcList 또는 #allDcList)
-                total_rows = await self.page.locator('tbody#allDcList tr').all()
-                if not total_rows:
-                    total_rows = await self.page.locator('#allDcList tr').all()
-                
+                total_rows = await self.page.locator('#allDcList tr').all()
                 for row in total_rows:
                     cells = await row.locator('td').all()
-                    # A매장 테이블 구조: [날짜, 할인권명, 수량]
-                    if len(cells) >= 3:
-                        # 할인권명은 1번째 셀 (인덱스 1)
-                        name = (await cells[1].inner_text()).strip()
-                        # 수량은 2번째 셀 (인덱스 2)
-                        count_text = (await cells[2].inner_text()).strip()
-                        m = re.search(r'(\d+)', count_text)
+                    if len(cells) >= 2:
+                        name = (await cells[0].inner_text()).strip()
+                        key = self.store_config.get_coupon_key(name)
+                        m = re.search(r'(\d+)', (await cells[1].inner_text()).strip())
                         count = int(m.group(1)) if m else 0
-                        
-                        # 실제 쿠폰명으로 직접 매핑
-                        if '30분할인권(무료)' in name:
-                            total_history['free_30min'] = count
-                        elif '1시간할인권(무료)' in name:
-                            total_history['free_1hour'] = count
-                        elif '1시간할인권(유료)' in name:
-                            total_history['paid_1hour'] = count
-                        elif '1시간주말할인권(유료)' in name:
-                            total_history['paid_1hour_weekend'] = count
-                        
-                        if self.logger.should_log_info():
-                            self.logger.log_info(f"[쿠폰파싱] 전체: {name} -> {count}개")
-            except Exception as e:
-                if self.logger.should_log_info():
-                    self.logger.log_info(f"[쿠폰파싱] allDcList 파싱 오류: {str(e)}")
+                        if key: total_history[key] = count
+            except Exception:
+                pass
             
             # 보유 쿠폰량 체크 및 부족 시 텔레그램 알림 (유료 쿠폰만)
             for coupon_name, counts in available_coupons.items():
@@ -336,7 +297,7 @@ class AStoreCrawler(BaseCrawler, StoreRepository):
                                 if self.logger.should_log_info():
                                     self.logger.log_info(f"[쿠폰적용] {coupon_name} {count}개 적용 성공")
                             else:
-                                self.logger.log_error(ErrorCode.FAIL_APPLY, "쿠폰적용", f"{coupon_name} 적용 버튼을 찾을 수 없음")
+                                details = self.logger.log_error("A", "쿠폰적용", "FAIL_APPLY", f"{coupon_name} 적용 버튼을 찾을 수 없음")
                                 return False
                             break
             
@@ -346,9 +307,8 @@ class AStoreCrawler(BaseCrawler, StoreRepository):
             return True
             
         except Exception as e:
-            self.logger.log_error(ErrorCode.FAIL_APPLY, "쿠폰적용", str(e))
+            details = self.logger.log_error("A", "쿠폰적용", "FAIL_APPLY", str(e))
             return False
-
 
     async def _send_low_coupon_notification(self, coupon_name: str, coupon_count: int):
         """쿠폰 부족 텔레그램 알림 (CloudWatch Logs 비용 최적화 적용)"""
@@ -372,7 +332,3 @@ class AStoreCrawler(BaseCrawler, StoreRepository):
         except Exception as e:
             # CloudWatch 비용 절감을 위한 간소화된 에러 로그
             self.logger.log_error(ErrorCode.FAIL_APPLY, "텔레그램알림", str(e))
-
-    async def cleanup(self) -> None:
-        """리소스 정리 - StoreRepository 인터페이스 구현"""
-        await super().cleanup()
