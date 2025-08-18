@@ -35,47 +35,39 @@ class AStoreCrawler(BaseCrawler):
             
             # 웹사이트 접속
             await self.page.goto(self.store_config.website_url)
+            await self.page.wait_for_load_state('networkidle')
             
             # 개발 환경에서만 시작 로그 기록
             self.logger.log_info("[시작] A 매장 자동화 시작")
             
-            # 1. 인트로 팝업 닫기 (실패해도 진행)
-            try:
-                await self.page.click("#skip")
-                self.logger.log_info("[팝업처리] 인트로 팝업 닫기 성공")
-            except Exception:
-                pass  # 팝업 처리 실패는 로그 기록하지 않음
-
-            # 2. 공지 팝업 닫기 (실패해도 진행)
-            try:
-                await self.page.click("#popupCancel")
-                self.logger.log_info("[팝업처리] 공지 팝업 닫기 성공")
-            except Exception:
-                pass  # 팝업 처리 실패는 로그 기록하지 않음
+            # 인트로 팝업 처리 (있으면)
+            await self._handle_intro_popups()
+            
+            # 로그인 폼이 로드될 때까지 대기
+            username_selector = self.store_config.selectors['login']['username_input']
+            await self.page.wait_for_selector(username_selector, timeout=10000)
             
             # 로그인 폼 입력
-            await self.page.fill("#id", self.store_config.login_username)
-            await self.page.fill("#password", self.store_config.login_password)
-            await self.page.click("#login")
+            await self.page.fill(username_selector, self.store_config.login_username)
+            password_selector = self.store_config.selectors['login']['password_input']
+            await self.page.fill(password_selector, self.store_config.login_password)
             
-            # 로그인 성공 확인 (차량번호 입력란이 보이는지)
-            await self.page.wait_for_selector("#carNumber", timeout=30000)
+            # 로그인 버튼 클릭
+            login_button_selector = self.store_config.selectors['login']['login_button']
+            await self.page.click(login_button_selector)
+            
+            # 페이지 로딩 대기
+            await self.page.wait_for_timeout(3000)
+            
+            # 로그인 후 팝업 처리
+            await self._handle_login_popups()
+            
+            # 로그인 성공 확인 - 차량번호 입력란 대기
+            car_input_selector = self.store_config.selectors['login']['car_number_input']
+            await self.page.wait_for_selector(car_input_selector, timeout=15000)
             
             # 개발 환경에서만 성공 로그 기록
             self.logger.log_info("[로그인] 로그인 성공")
-            
-            # 로그인 성공 후 팝업 처리 (실패해도 진행)
-            try:
-                await self.page.click('#gohome')
-                self.logger.log_info("[로그인 후] 첫 번째 팝업 닫기 버튼 클릭 성공")
-            except Exception:
-                pass
-                
-            try:
-                await self.page.click('#start')
-                self.logger.log_info("[로그인 후] 두 번째 팝업 닫기 버튼 클릭 성공")
-            except Exception:
-                pass
                 
             return True
             
@@ -87,59 +79,107 @@ class AStoreCrawler(BaseCrawler):
             self.logger.log_error(ErrorCode.FAIL_AUTH, "로그인", str(e))
             return False
     
+    async def _handle_intro_popups(self):
+        """인트로 및 공지 팝업 처리"""
+        try:
+            # 인트로 팝업 닫기
+            intro_skip_selector = self.store_config.selectors['popups']['intro_skip']
+            if await self.page.locator(intro_skip_selector).count() > 0:
+                await self.page.click(intro_skip_selector)
+                self.logger.log_info("[팝업처리] 인트로 팝업 닫기 성공")
+                await self.page.wait_for_timeout(1000)
+        except:
+            pass
+        
+        try:
+            # 공지 팝업 닫기
+            notice_cancel_selector = self.store_config.selectors['popups']['notice_cancel']
+            if await self.page.locator(notice_cancel_selector).count() > 0:
+                await self.page.click(notice_cancel_selector)
+                self.logger.log_info("[팝업처리] 공지 팝업 닫기 성공")
+                await self.page.wait_for_timeout(1000)
+        except:
+            pass
+    
+    async def _handle_login_popups(self):
+        """로그인 후 팝업 처리"""
+        try:
+            # 첫 번째 팝업 (gohome)
+            gohome_selector = self.store_config.selectors['popups']['after_login_home']
+            if await self.page.locator(gohome_selector).count() > 0:
+                await self.page.click(gohome_selector)
+                self.logger.log_info("[로그인 후] 첫 번째 팝업 처리 성공")
+                await self.page.wait_for_timeout(1000)
+        except:
+            pass
+        
+        try:
+            # 두 번째 팝업 (start)
+            start_selector = self.store_config.selectors['popups']['after_login_start']
+            if await self.page.locator(start_selector).count() > 0:
+                await self.page.click(start_selector)
+                self.logger.log_info("[로그인 후] 두 번째 팝업 처리 성공")
+                await self.page.wait_for_timeout(1000)
+        except:
+            pass
+    
     async def search_vehicle(self, vehicle: Vehicle) -> bool:
         """차량 검색"""
         try:
             # 차량번호 입력
-            await self.page.fill("#carNumber", vehicle.number)
+            car_input_selector = self.store_config.selectors['search']['car_number_input']
+            await self.page.fill(car_input_selector, "")
+            await self.page.fill(car_input_selector, vehicle.number)
             
             # 개발 환경에서만 입력 성공 로그 기록
             self.logger.log_info('[차량검색] 차량 번호 입력 성공')
             
             # 검색 버튼 클릭 (여러 셀렉터 시도)
-            try:
-                await self.page.click('button[name="search"]')
-            except:
+            search_selectors = [
+                self.store_config.selectors['search']['search_button'],
+                self.store_config.selectors['search']['search_button_alt1'],
+                self.store_config.selectors['search']['search_button_alt2']
+            ]
+            
+            for selector in search_selectors:
                 try:
-                    await self.page.click('.btn-search')
-                except:
-                    await self.page.click('button:has-text("검색")')
+                    if await self.page.locator(selector).count() > 0:
+                        await self.page.click(selector)
+                        break
+                except Exception:
+                    continue
             
-            # 검색 결과 대기
-            await self.page.wait_for_timeout(1000)
+            # 검색 결과 로딩 대기
+            await self.page.wait_for_timeout(3000)
             
-            # [추가] #parkName의 텍스트가 '검색된 차량이 없습니다.'인지 확인
-            try:
-                park_name_elem = self.page.locator('#parkName')
-                if await park_name_elem.count() > 0:
-                    park_name_text = await park_name_elem.inner_text()
-                    if '검색된 차량이 없습니다.' in park_name_text:
-                        self.logger.log_error(ErrorCode.NO_VEHICLE, "차량검색", f"차량번호 {vehicle.number} 검색 결과 없음")
-                        return False
-            except Exception:
-                pass
-            
-            # 기존: 검색 결과 확인
-            no_result = self.page.locator('text="검색된 차량이 없습니다"')
-            if await no_result.count() > 0:
-                details = self.logger.log_error("A", "차량검색", "NO_VEHICLE", f"차량번호 {vehicle.number} 검색 결과 없음")
-                return False
+            # 검색 결과 없음 체크
+            park_name_selector = self.store_config.selectors['search']['park_name']
+            if await self.page.locator(park_name_selector).count() > 0:
+                park_name_text = await self.page.locator(park_name_selector).inner_text()
+                if '검색된 차량이 없습니다.' in park_name_text:
+                    self.logger.log_error(ErrorCode.NO_VEHICLE, "차량검색", f"차량번호 {vehicle.number} 검색 결과 없음")
+                    return False
                 
             # 차량 선택 버튼 클릭
-            try:
-                await self.page.click('#next')
-                if self.logger.should_log_info():
-                    self.logger.log_info('[차량검색] 차량 선택 버튼 클릭 성공')
-                await self.page.wait_for_timeout(5000)
-            except Exception as e1:
+            next_selectors = [
+                self.store_config.selectors['search']['next_button'],
+                self.store_config.selectors['search']['next_button_alt']
+            ]
+            
+            for selector in next_selectors:
                 try:
-                    await self.page.click('button:has-text("차량 선택")')
-                    if self.logger.should_log_info():
-                        self.logger.log_info('[차량검색] button:has-text("차량 선택") 버튼 클릭 성공')
-                    await self.page.wait_for_timeout(3000)
-                except Exception as e2:
-                    details = self.logger.log_error("A", "차량검색", "FAIL_SEARCH", f"차량 선택 버튼 클릭 실패: {str(e1)}, {str(e2)}")
-                    return False
+                    if await self.page.locator(selector).count() > 0:
+                        await self.page.click(selector)
+                        if self.logger.should_log_info():
+                            self.logger.log_info('[차량검색] 차량 선택 버튼 클릭 성공')
+                        # 페이지 로딩 대기
+                        await self.page.wait_for_timeout(5000)
+                        break
+                except Exception:
+                    continue
+            else:
+                self.logger.log_error(ErrorCode.FAIL_SEARCH, "차량검색", "차량 선택 버튼을 찾을 수 없음")
+                return False
             
             # 개발 환경에서만 성공 로그 기록
             if self.logger.should_log_info():
@@ -147,7 +187,7 @@ class AStoreCrawler(BaseCrawler):
             return True
             
         except Exception as e:
-            details = self.logger.log_error("A", "차량검색", "FAIL_SEARCH", str(e))
+            self.logger.log_error(ErrorCode.FAIL_SEARCH, "차량검색", str(e))
             return False
 
     # [수정] 여기를 수정했습니다.
@@ -194,35 +234,75 @@ class AStoreCrawler(BaseCrawler):
                     except Exception:
                         continue
             
-            # 우리 매장 쿠폰 내역 (#myDcList)
+            # 우리 매장 쿠폰 내역 (tbody#myDcList)
             my_history = {}
             try:
-                my_dc_rows = await self.page.locator('#myDcList tr').all()
+                # 여러 셀렉터 시도 (tbody#myDcList 또는 #myDcList)
+                my_dc_rows = await self.page.locator('tbody#myDcList tr').all()
+                if not my_dc_rows:
+                    my_dc_rows = await self.page.locator('#myDcList tr').all()
+                
                 for row in my_dc_rows:
                     cells = await row.locator('td').all()
-                    if len(cells) >= 2:
-                        name = (await cells[0].inner_text()).strip()
-                        key = self.store_config.get_coupon_key(name)
-                        m = re.search(r'(\d+)', (await cells[1].inner_text()).strip())
+                    # A매장 테이블 구조: [날짜, 할인권명, 수량]
+                    if len(cells) >= 3:
+                        # 할인권명은 1번째 셀 (인덱스 1)
+                        name = (await cells[1].inner_text()).strip()
+                        # 수량은 2번째 셀 (인덱스 2)
+                        count_text = (await cells[2].inner_text()).strip()
+                        m = re.search(r'(\d+)', count_text)
                         count = int(m.group(1)) if m else 0
-                        if key: my_history[key] = count
-            except Exception:
-                pass
+                        
+                        # 실제 쿠폰명으로 직접 매핑
+                        if '30분할인권(무료)' in name:
+                            my_history['free_30min'] = count
+                        elif '1시간할인권(무료)' in name:
+                            my_history['free_1hour'] = count
+                        elif '1시간할인권(유료)' in name:
+                            my_history['paid_1hour'] = count
+                        elif '1시간주말할인권(유료)' in name:
+                            my_history['paid_1hour_weekend'] = count
+                        
+                        if self.logger.should_log_info():
+                            self.logger.log_info(f"[쿠폰파싱] 우리매장: {name} -> {count}개")
+            except Exception as e:
+                if self.logger.should_log_info():
+                    self.logger.log_info(f"[쿠폰파싱] myDcList 파싱 오류: {str(e)}")
 
-            # 전체 쿠폰 이력 (#allDcList)
+            # 전체 쿠폰 이력 (tbody#allDcList)
             total_history = {}
             try:
-                total_rows = await self.page.locator('#allDcList tr').all()
+                # 여러 셀렉터 시도 (tbody#allDcList 또는 #allDcList)
+                total_rows = await self.page.locator('tbody#allDcList tr').all()
+                if not total_rows:
+                    total_rows = await self.page.locator('#allDcList tr').all()
+                
                 for row in total_rows:
                     cells = await row.locator('td').all()
-                    if len(cells) >= 2:
-                        name = (await cells[0].inner_text()).strip()
-                        key = self.store_config.get_coupon_key(name)
-                        m = re.search(r'(\d+)', (await cells[1].inner_text()).strip())
+                    # A매장 테이블 구조: [날짜, 할인권명, 수량]
+                    if len(cells) >= 3:
+                        # 할인권명은 1번째 셀 (인덱스 1)
+                        name = (await cells[1].inner_text()).strip()
+                        # 수량은 2번째 셀 (인덱스 2)
+                        count_text = (await cells[2].inner_text()).strip()
+                        m = re.search(r'(\d+)', count_text)
                         count = int(m.group(1)) if m else 0
-                        if key: total_history[key] = count
-            except Exception:
-                pass
+                        
+                        # 실제 쿠폰명으로 직접 매핑
+                        if '30분할인권(무료)' in name:
+                            total_history['free_30min'] = count
+                        elif '1시간할인권(무료)' in name:
+                            total_history['free_1hour'] = count
+                        elif '1시간할인권(유료)' in name:
+                            total_history['paid_1hour'] = count
+                        elif '1시간주말할인권(유료)' in name:
+                            total_history['paid_1hour_weekend'] = count
+                        
+                        if self.logger.should_log_info():
+                            self.logger.log_info(f"[쿠폰파싱] 전체: {name} -> {count}개")
+            except Exception as e:
+                if self.logger.should_log_info():
+                    self.logger.log_info(f"[쿠폰파싱] allDcList 파싱 오류: {str(e)}")
             
             # 보유 쿠폰량 체크 및 부족 시 텔레그램 알림 (유료 쿠폰만)
             for coupon_name, counts in available_coupons.items():
@@ -297,7 +377,7 @@ class AStoreCrawler(BaseCrawler):
                                 if self.logger.should_log_info():
                                     self.logger.log_info(f"[쿠폰적용] {coupon_name} {count}개 적용 성공")
                             else:
-                                details = self.logger.log_error("A", "쿠폰적용", "FAIL_APPLY", f"{coupon_name} 적용 버튼을 찾을 수 없음")
+                                self.logger.log_error(ErrorCode.FAIL_APPLY, "쿠폰적용", f"{coupon_name} 적용 버튼을 찾을 수 없음")
                                 return False
                             break
             
@@ -307,7 +387,7 @@ class AStoreCrawler(BaseCrawler):
             return True
             
         except Exception as e:
-            details = self.logger.log_error("A", "쿠폰적용", "FAIL_APPLY", str(e))
+            self.logger.log_error(ErrorCode.FAIL_APPLY, "쿠폰적용", str(e))
             return False
 
     async def _send_low_coupon_notification(self, coupon_name: str, coupon_count: int):

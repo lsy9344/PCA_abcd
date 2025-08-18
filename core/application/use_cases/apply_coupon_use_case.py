@@ -78,10 +78,25 @@ class ApplyCouponUseCase:
             for coupon_name in discount_info:
                 available_coupons[coupon_name] = discount_info[coupon_name].get('car', 0)
 
-            # 7. 할인 계산
+            # 7. 이력 키 변환: coupon_name → coupon_key (할인 계산기 호환)
+            my_history_by_key = self._convert_history_keys(
+                my_history, 
+                self._discount_calculator.coupon_configs
+            )
+            total_history_by_key = self._convert_history_keys(
+                total_history, 
+                self._discount_calculator.coupon_configs
+            )
+            
+            # 개발 환경에서만 변환된 이력 로그
+            if os.getenv('ENVIRONMENT', 'development') != 'production':
+                self._logger.info(f"[{request.store_id}] 변환된 내 이력: {my_history_by_key}")
+                self._logger.info(f"[{request.store_id}] 변환된 전체 이력: {total_history_by_key}")
+            
+            # 할인 계산
             applications = self._discount_calculator.calculate_required_coupons(
-                my_history=my_history,
-                total_history=total_history,
+                my_history=my_history_by_key,
+                total_history=total_history_by_key,
                 available_coupons=available_coupons,
                 is_weekday=is_weekday
             )
@@ -147,6 +162,14 @@ class ApplyCouponUseCase:
         
         finally:
             await self._store_repository.cleanup()
+    
+    def _convert_history_keys(self, history_by_name: dict, coupon_configs: list) -> dict:
+        """이력 키 변환: coupon_name → coupon_key"""
+        history_by_key = {}
+        for config in coupon_configs:
+            if config.coupon_name in history_by_name:
+                history_by_key[config.coupon_key] = history_by_name[config.coupon_name]
+        return history_by_key
     
     def _get_current_step(self, error_message: str) -> str:
         """에러 메시지와 현재 단계에서 정확한 단계 추출"""

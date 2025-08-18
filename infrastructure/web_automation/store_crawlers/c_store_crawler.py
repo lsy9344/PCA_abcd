@@ -7,7 +7,6 @@ import re
 import yaml
 from typing import Dict, List, Optional, Any
 from playwright.async_api import Page, TimeoutError
-from dotenv import load_dotenv
 
 from infrastructure.web_automation.base_crawler import BaseCrawler
 from core.domain.repositories.store_repository import StoreRepository
@@ -26,13 +25,9 @@ class CStoreCrawler(BaseCrawler, StoreRepository):
         # C 매장 yaml 설정 로드
         self.c_store_config = self._load_c_store_config()
         
-        # 환경 변수에서 로그인 정보 로드
-        load_dotenv()
-        self.username = os.getenv('C_STORE_USERNAME')
-        self.password = os.getenv('C_STORE_PASSWORD')
-        
-        if not self.username or not self.password:
-            raise ValueError("C매장 로그인 정보가 환경 변수에 설정되지 않았습니다. .env 파일을 확인하세요.")
+        # 설정 파일에서 로그인 정보 로드 (다른 매장과 동일)
+        self.username = self.store_config.login_username
+        self.password = self.store_config.login_password
         
         self.user_id = self.username  # 기존 호환성 유지
         self.logger = OptimizedLogger("c_store_crawler", "C")
@@ -119,9 +114,12 @@ class CStoreCrawler(BaseCrawler, StoreRepository):
             # 검색 결과 로딩 대기
             await self.page.wait_for_timeout(3000)
             
-            # 공통 차량 검색 실패 감지 로직 사용 (설정 기반)
-            if await self.check_no_vehicle_found_by_config(self.page, car_number):
+            # 검색 결과 없음 팝업 확인 (UI 테스트와 동일한 로직)
+            no_result_message = 'text=검색된 차량이 없습니다'
+            if await self.page.locator(no_result_message).count() > 0:
                 self.logger.log_error(ErrorCode.NO_VEHICLE, "차량검색", f"차량번호 {car_number} 검색 결과 없음")
+                # 팝업 닫기
+                await self._handle_no_result_popup()
                 return False
             
             # 검색된 차량을 테이블에서 클릭
@@ -410,16 +408,15 @@ class CStoreCrawler(BaseCrawler, StoreRepository):
             return False
 
     async def _select_vehicle_from_table(self, car_number: str) -> bool:
-        """검색 결과 테이블에서 차량 선택"""
+        """검색 결과 테이블에서 차량 선택 - UI 테스트와 동일한 로직"""
         try:
-            # 스크린샷 기반으로 확인된 테이블 셀렉터들 - UI 테스트로 검증됨
+            # 테이블 찾기 및 차량 선택 - UI 테스트에서 검증된 셀렉터들 사용
             table_selectors = [
-                "#tableID",  # 스크린샷에서 확인된 실제 테이블 ID (camelCase) - UI 테스트로 검증
-                self.store_config.selectors['search']['search_result_table'],  # 설정파일의 테이블 셀렉터
-                "#tableid",  # 백업용 (소문자)
+                "#tableID",  # UI 테스트에서 확인된 실제 테이블 ID (camelCase)
+                "#tableid",
+                "#searchResult", 
                 "table",
-                ".table-box",
-                "[id*='table']"
+                ".table-box"
             ]
             
             for table_selector in table_selectors:
@@ -428,42 +425,61 @@ class CStoreCrawler(BaseCrawler, StoreRepository):
                     if await table.count() > 0:
                         self.logger.log_info(f"[진행] 테이블 발견: {table_selector}")
                         
-                        # 테이블의 모든 행 검사
-                        rows = await table.locator('tr').all()
+                        # 테이블의 모든 행 검사 (UI 테스트와 동일)
+                        rows = await table.locator('tbody tr').all()
+                        if len(rows) == 0:
+                            # tbody가 없는 경우 일반 tr 사용
+                            rows = await table.locator('tr').all()
                         
-                        for row in rows:
+                        self.logger.log_info(f"[진행] 테이블 행 수: {len(rows)}")
+                        
+                        for i, row in enumerate(rows):
                             try:
                                 row_text = await row.inner_text()
+                                self.logger.log_info(f"[진행] 행 {i+1}: {row_text[:50]}...")
                                 
-                                if car_number in row_text:
-                                    # 차량번호가 포함된 행에서 클릭 가능한 요소 찾기
-                                    clickable_elements = [
-                                        row.locator(f'td:has-text("{car_number}")'),
-                                        row.locator('a'),
-                                        row.locator('[onclick]'),
-                                        row.locator('td').first
-                                    ]
+                                # 검색된 차량번호 패턴을 포함하는 행 찾기 (UI 테스트와 동일)
+                                if car_number in row_text or any(char.isdigit() for char in row_text):
+                                    self.logger.log_info(f"[성공] 검색 결과 발견 (행 {i+1}): {row_text}")
                                     
-                                    for element in clickable_elements:
-                                        if await element.count() > 0:
-                                            await element.first.click()
-                                            self.logger.log_info(f"[성공] 차량번호 '{car_number}' 클릭 완료")
+                                    # 행 클릭 시도 (onclick 핸들러가 있는 경우) - UI 테스트와 동일
+                                    try:
+                                        # 먼저 행 자체에 onclick이 있는지 확인
+                                        onclick_attr = await row.get_attribute('onclick')
+                                        if onclick_attr:
+                                            self.logger.log_info(f"[진행] onclick 핸들러 발견: {onclick_attr[:50]}...")
+                                            await row.click()
+                                            self.logger.log_info(f"[성공] 차량 행 클릭 완료")
+                                            
+                                            # 선택 후 대기
                                             await self.page.wait_for_timeout(2000)
                                             return True
+                                        else:
+                                            # onclick이 없으면 셀 클릭 시도 - UI 테스트와 동일
+                                            cells = await row.locator('td').all()
+                                            for cell in cells:
+                                                if await cell.count() > 0:
+                                                    await cell.click()
+                                                    self.logger.log_info(f"[성공] 차량 셀 클릭 완료")
+                                                    
+                                                    await self.page.wait_for_timeout(2000)
+                                                    return True
+                                                    
+                                    except Exception as click_error:
+                                        self.logger.log_warning(f"[경고] 행 클릭 중 오류: {str(click_error)}")
+                                        continue
                                             
-                            except Exception:
+                            except Exception as row_error:
+                                self.logger.log_warning(f"[경고] 행 처리 중 오류: {str(row_error)}")
                                 continue
                         
-                        # 테이블은 찾았지만 차량번호가 없는 경우
-                        self.logger.log_warning(f"[경고] 테이블에서 차량번호 '{car_number}'를 찾을 수 없음")
-                        return False
+                        self.logger.log_warning(f"[경고] 테이블에서 검색 결과를 찾을 수 없음")
+                        break
                         
                 except Exception:
                     continue
             
-            # 모든 테이블 셀렉터에서 실패한 경우
             self.logger.log_error(ErrorCode.FAIL_SEARCH, "테이블검색", "검색 결과 테이블을 찾을 수 없음")
-            await self._debug_page_state()
             return False
             
         except Exception as e:

@@ -3,6 +3,9 @@
 from typing import Dict, Type
 from adapters.store_adapter import StoreAdapter
 from adapters.d_store_adapter import DStoreAdapter
+from adapters.a_store_adapter import AStoreAdapter
+from adapters.b_store_adapter import BStoreAdapter
+from adapters.c_store_adapter import CStoreAdapter
 from infrastructure.config.loader import load_store_config, load_runtime_options, load_telegram_config
 from infrastructure.logging.structured_logger import StructuredLogger
 from infrastructure.notifications.telegram_adapter import TelegramAdapter
@@ -44,13 +47,37 @@ def get_store_adapter(store_id: str) -> StoreAdapter:
             structured_logger=structured_logger,
             notification_service=notification_service
         )
+    elif store_id_upper == 'A':
+        return AStoreAdapter(
+            store_config=store_config,
+            playwright_config=playwright_config,
+            structured_logger=structured_logger,
+            notification_service=notification_service
+        )
+    elif store_id_upper == 'B':
+        return BStoreAdapter(
+            store_config=store_config,
+            playwright_config=playwright_config,
+            structured_logger=structured_logger,
+            notification_service=notification_service
+        )
+    elif store_id_upper == 'C':
+        return CStoreAdapter(
+            store_config=store_config,
+            playwright_config=playwright_config,
+            structured_logger=structured_logger,
+            notification_service=notification_service
+        )
     else:
         raise ValueError(f"지원하지 않는 매장 ID입니다: {store_id}")
 
 
-# 레지스트리 (현재는 D매장만 구현)
+# 레지스트리
 STORE_REGISTRY: Dict[str, Type[StoreAdapter]] = {
-    'D': DStoreAdapter
+    'D': DStoreAdapter,
+    'A': AStoreAdapter,
+    'B': BStoreAdapter,
+    'C': CStoreAdapter
 }
 
 

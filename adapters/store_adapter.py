@@ -20,12 +20,12 @@ class StoreAdapter(ABC):
     
     @abstractmethod
     async def search_vehicle(self, car_number: str) -> bool:
-        """차량 검색"""
+        """차량 검색 - 4자리 숫자 문자열"""
         pass
     
     @abstractmethod
     async def get_coupon_history(self, car_number: str) -> CouponHistory:
-        """쿠폰 이력 조회"""
+        """쿠폰 이력 조회 - 4자리 숫자 문자열"""
         pass
     
     @abstractmethod

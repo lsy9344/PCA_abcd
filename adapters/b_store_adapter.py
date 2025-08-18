@@ -1,17 +1,17 @@
-"""D매장 어댑터"""
+"""B매장 어댑터"""
 
 from typing import List
 from adapters.store_adapter import StoreAdapter
 from core.domain.models.vehicle import Vehicle
 from core.domain.models.coupon import CouponHistory, CouponApplication
-from reference.d_store_crawler import DStoreCrawler
+from infrastructure.web_automation.store_crawlers.b_store_crawler import BStoreCrawler
 
 
-class DStoreAdapter(StoreAdapter):
-    """D매장 크롤러를 표준 인터페이스로 감싸는 어댑터"""
+class BStoreAdapter(StoreAdapter):
+    """B매장 크롤러를 표준 인터페이스로 감싸는 어댑터"""
     
     def __init__(self, store_config, playwright_config, structured_logger, notification_service=None):
-        self.crawler = DStoreCrawler(
+        self.crawler = BStoreCrawler(
             store_config=store_config,
             playwright_config=playwright_config, 
             structured_logger=structured_logger,
@@ -21,7 +21,7 @@ class DStoreAdapter(StoreAdapter):
     
     async def start(self) -> None:
         """브라우저/컨텍스트 초기화"""
-        # DStoreCrawler는 login()에서 브라우저를 초기화하므로 여기서는 패스
+        # BStoreCrawler는 login()에서 브라우저를 초기화하므로 여기서는 패스
         pass
     
     async def login(self) -> bool:
@@ -29,12 +29,12 @@ class DStoreAdapter(StoreAdapter):
         return await self.crawler.login()
     
     async def search_vehicle(self, car_number: str) -> bool:
-        """차량 검색 - 내부적으로 Vehicle 객체로 변환"""
+        """차량 검색 - 내부적으로 Vehicle 객체로 변환하여 크롤러에 전달"""
         self._vehicle = Vehicle(number=car_number)
         return await self.crawler.search_vehicle(self._vehicle)
     
     async def get_coupon_history(self, car_number: str) -> CouponHistory:
-        """쿠폰 이력 조회 - 내부적으로 Vehicle 객체로 변환"""
+        """쿠폰 이력 조회 - 내부적으로 Vehicle 객체로 변환하여 크롤러에 전달"""
         if not self._vehicle or self._vehicle.number != car_number:
             self._vehicle = Vehicle(number=car_number)
         return await self.crawler.get_coupon_history(self._vehicle)

@@ -1,17 +1,17 @@
-"""D매장 어댑터"""
+"""A매장 어댑터"""
 
 from typing import List
 from adapters.store_adapter import StoreAdapter
 from core.domain.models.vehicle import Vehicle
 from core.domain.models.coupon import CouponHistory, CouponApplication
-from reference.d_store_crawler import DStoreCrawler
+from infrastructure.web_automation.store_crawlers.a_store_crawler import AStoreCrawler
 
 
-class DStoreAdapter(StoreAdapter):
-    """D매장 크롤러를 표준 인터페이스로 감싸는 어댑터"""
+class AStoreAdapter(StoreAdapter):
+    """A매장 크롤러를 표준 인터페이스로 감싸는 어댑터"""
     
     def __init__(self, store_config, playwright_config, structured_logger, notification_service=None):
-        self.crawler = DStoreCrawler(
+        self.crawler = AStoreCrawler(
             store_config=store_config,
             playwright_config=playwright_config, 
             structured_logger=structured_logger,
@@ -21,7 +21,7 @@ class DStoreAdapter(StoreAdapter):
     
     async def start(self) -> None:
         """브라우저/컨텍스트 초기화"""
-        # DStoreCrawler는 login()에서 브라우저를 초기화하므로 여기서는 패스
+        # AStoreCrawler는 login()에서 브라우저를 초기화하므로 여기서는 패스
         pass
     
     async def login(self) -> bool:

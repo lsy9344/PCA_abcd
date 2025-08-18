@@ -56,21 +56,32 @@ class BStoreCrawler(BaseCrawler, StoreRepository):
             return False
 
     async def search_vehicle(self, vehicle: Vehicle) -> bool:
-        """차량 검색 (체크박스 확인 로직 포함)"""
+        """차량 검색 (체크박스 확인 및 입차일 설정 로직 포함)"""
         try:
             # [수정] 차량 검색을 시작하기 전에, 검색 기능의 일부인 체크박스 상태를 먼저 확인합니다.
             await self._ensure_search_state_checkbox(self.page)
+
+            # [추가] 입차일 설정 (test_b_store_ui_2.py와 동일한 로직)
+            entry_date = "2025-07-01"  # 테스트 파일과 동일한 고정값
+            try:
+                entry_date_input = self.page.locator("input[name='entryDate']")
+                await entry_date_input.fill(entry_date)
+                self.logger.log_info(f"[성공] 입차일 설정 완료: {entry_date}")
+            except Exception as e:
+                self.logger.log_warning(f"[경고] 입차일 설정 실패 (계속 진행): {str(e)}")
 
             car_number = vehicle.number
             
             car_input = self.page.get_by_role('textbox', name='차량번호')
             await car_input.fill(car_number)
+            self.logger.log_info(f"[성공] 차량번호 입력 완료: {car_number}")
             
             search_button = self.page.get_by_role('button', name='검색')
             if await search_button.count() == 0:
                 raise Exception("검색 버튼을 찾을 수 없음")
             
             await search_button.click()
+            self.logger.log_info(f"[성공] 검색 버튼 클릭 완료")
             await self.page.wait_for_timeout(2000)
             
             # 공통 차량 검색 실패 감지 로직 사용 (설정 기반)
@@ -130,11 +141,11 @@ class BStoreCrawler(BaseCrawler, StoreRepository):
             total_applied = 0
             for coupon_name, count in coupons_to_apply.items():
                 if count > 0:
-                    # 쿠폰 이름을 통합 키로 매핑
+                    # 쿠폰 이름을 통합 키로 매핑 (test_b_store_ui_2.py와 일치)
                     coupon_type = None
-                    if '무료' in coupon_name or 'FREE_1HOUR' in coupon_name:
+                    if '무료' in coupon_name or 'FREE_COUPON' in coupon_name or 'FREE_1HOUR' in coupon_name:
                         coupon_type = 'FREE_1HOUR'
-                    elif '유료' in coupon_name or 'PAID_30MIN' in coupon_name:
+                    elif '유료' in coupon_name or 'PAID_COUPON' in coupon_name or 'PAID_30MIN' in coupon_name:
                         coupon_type = 'PAID_30MIN'
                     
                     if coupon_type:

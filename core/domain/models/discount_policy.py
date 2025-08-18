@@ -91,13 +91,14 @@ def calculate_dynamic_coupons(
         total_free_used = total_history.get(config.coupon_key, 0)
         my_free_used = my_history.get(config.coupon_key, 0)
         
-        if total_free_used > 0:
-            continue  # 이미 다른 매장에서 사용됨
+        # 무료 쿠폰은 전체적으로 또는 이 매장에서 이미 사용했다면 더 이상 적용 불가
+        if total_free_used > 0 or my_free_used > 0:
+            continue  # 이미 사용됨 (전체 또는 이 매장에서)
         
         # 무료 쿠폰 적용 가능한 개수 계산
         free_needed_count = min(
             math.ceil(remaining_minutes / config.duration_minutes),
-            1 - my_free_used  # 무료 쿠폰은 보통 1개 제한
+            1  # 무료 쿠폰은 보통 1개 제한
         )
         
         if free_needed_count > 0:

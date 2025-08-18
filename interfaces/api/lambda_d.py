@@ -7,6 +7,7 @@ import asyncio
 from typing import Dict, Any
 
 from core.application.dto.automation_dto import AutomationRequest, AutomationResponse
+from core.application.services.d_store_automation_service import DStoreAutomationService
 from infrastructure.config.config_manager import ConfigManager
 from infrastructure.factories.automation_factory import AutomationFactory
 
@@ -83,8 +84,18 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
 
 async def execute_automation(request: AutomationRequest) -> AutomationResponse:
-    """D매장 자동화 실행"""
+    """D매장 자동화 실행 - 전용 서비스 사용"""
     factory = get_automation_factory()
-    use_case = factory.create_apply_coupon_use_case(request.store_id)
     
-    return await use_case.execute(request)
+    # D매장 전용 자동화 서비스 생성
+    config_manager = factory.config_manager
+    notification_service = factory.create_notification_service()
+    logger = factory.create_logger("d_store_automation")
+    
+    d_store_service = DStoreAutomationService(
+        config_manager=config_manager,
+        notification_service=notification_service,
+        logger=logger
+    )
+    
+    return await d_store_service.execute(request)

@@ -11,6 +11,7 @@ from core.domain.repositories.store_repository import StoreRepository
 from core.domain.models.vehicle import Vehicle
 from core.domain.models.coupon import CouponHistory, CouponApplication
 from utils.optimized_logger import OptimizedLogger, ErrorCode
+from shared.utils.common_coupon_calculator import CommonCouponCalculator
 
 
 class DStoreCrawler(BaseCrawler, StoreRepository):
@@ -99,10 +100,12 @@ class DStoreCrawler(BaseCrawler, StoreRepository):
             return False
 
     async def get_coupon_history(self, vehicle: Vehicle) -> CouponHistory:
-        """쿠폰 이력 조회"""
+        """쿠폰 이력 조회 - 공통 계산 로직 적용"""
         try:
-            my_history = {}
-            total_history = {}
+            # 1단계: 현재 적용된 쿠폰 파싱 (공통 로직 사용)
+            my_history, total_history = await self._parse_current_applied_coupons()
+            
+            # 2단계: 보유 쿠폰 파싱
             available_coupons = {}
             
             # 기본 쿠폰 정보 설정 (실제 구현 시 페이지에서 파싱)
@@ -112,9 +115,6 @@ class DStoreCrawler(BaseCrawler, StoreRepository):
             
             # 쿠폰 리스트 파싱
             await self._parse_available_coupons(available_coupons)
-            
-            # 사용 이력 파싱
-            await self._parse_coupon_history(my_history, total_history)
             
             return CouponHistory(
                 store_id=self.store_id,
@@ -417,8 +417,40 @@ class DStoreCrawler(BaseCrawler, StoreRepository):
         except Exception as e:
             self.logger.log_warning(f"[경고] 쿠폰 리스트 파싱 실패: {str(e)}")
 
+    async def _parse_current_applied_coupons(self) -> tuple:
+        """현재 적용된 쿠폰 파싱 - 공통 계산 로직 사용"""
+        try:
+            # D매장 쿠폰 매핑 설정
+            coupon_key_mapping = {
+                "1시간 무료": "FREE_COUPON",
+                "30분 유료": "PAID_COUPON"
+            }
+            
+            # D매장 할인 내역 셀렉터 (실제 구조에 맞게 수정 필요)
+            discount_selectors = [
+                "tbody[id*='discountlist'] tr",  # 기본 할인 내역 테이블
+                "#discountHistory tr",           # 할인 이력 테이블
+                ".discount-list tr",             # 할인 목록
+                "tr[id*='discount']",            # 할인 관련 행
+                "table tr"                       # 모든 테이블 행 (fallback)
+            ]
+            
+            # 공통 파싱 로직 호출
+            my_history, total_history = await CommonCouponCalculator.parse_applied_coupons(
+                self.page,
+                coupon_key_mapping,
+                discount_selectors,
+                has_my_history=True  # D매장은 my_history 지원
+            )
+            
+            return my_history, total_history
+            
+        except Exception as e:
+            self.logger.log_error(ErrorCode.FAIL_PARSE, "현재쿠폰파싱", str(e))
+            return {}, {}
+
     async def _parse_coupon_history(self, my_history: Dict, total_history: Dict):
-        """쿠폰 사용 이력 파싱 - 실제 D매장 구조에 맞게 수정"""
+        """쿠폰 사용 이력 파싱 - DEPRECATED (공통 로직으로 대체됨)"""
         try:
             # 30분 유료 쿠폰 그룹 파싱
             paid_coupon_group = self.page.locator('#mf_wfm_body_gen_usedDcTkGrpList_0_discountTkGrp')
@@ -491,7 +523,7 @@ class DStoreCrawler(BaseCrawler, StoreRepository):
         return False
 
     async def _apply_single_coupon(self, coupon_name: str, sequence: int) -> bool:
-        """단일 쿠폰 적용 - 실제 D매장 구조에 맞게 수정"""
+        """단일 쿠폰 적용 - D매장 특성 반영 (팝업 미출현)"""
         try:
             self.logger.log_info(f"[쿠폰] {coupon_name} 쿠폰 적용 시작 (순서: {sequence})")
             
@@ -509,10 +541,11 @@ class DStoreCrawler(BaseCrawler, StoreRepository):
             # 적용 버튼 클릭
             if await apply_button.count() > 0:
                 await apply_button.first.click()
-                await self.page.wait_for_timeout(1000)
+                await self.page.wait_for_timeout(1500)  # D매장 특성: 팝업 대기 시간 증가
                 
-                # 확인 팝업은 나타나지 않으므로 팝업 처리 제거
-                self.logger.log_info(f"[성공] {coupon_name} 적용 완료 (확인 팝업 없음)")
+                # D매장 특징: 쿠폰 적용 후 확인 팝업이 나타나지 않음
+                # 따라서 별도의 팝업 처리 불필요
+                self.logger.log_info(f"[성공] {coupon_name} 적용 완료 (D매장 특성: 팝업 미출현)")
                 return True
             else:
                 self.logger.log_error(ErrorCode.FAIL_APPLY, "쿠폰적용", f"{coupon_name} 적용 버튼을 찾을 수 없음")
