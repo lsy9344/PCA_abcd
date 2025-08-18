@@ -415,7 +415,7 @@ class CStoreUITest:
         """3단계: 차량번호 입력"""
         print("\n📍 3단계: 차량번호 입력")
         
-        test_car_number = "1111"  # 테스트용 차량번호
+        test_car_number = "6897"  # 테스트용 차량번호
         
         try:
             car_input_selector = self.config['selectors']['search']['car_number_input']

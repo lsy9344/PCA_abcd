@@ -319,10 +319,10 @@ class DStoreCrawler(BaseCrawler, StoreRepository):
                     textbox_elements = await container.locator('.w2textbox, p.w2textbox').all()
                     for textbox in textbox_elements:
                         count_text = await textbox.inner_text()
-                        if count_text and count_text.strip().isdigit():
-                            count = int(count_text.strip())
+                        if count_text and count_text.strip().replace(',', '').isdigit():
+                            count = int(count_text.strip().replace(',', ''))
                             parsed_coupons.append(count)
-                            self.logger.log_info(f"[파싱] 쿠폰 수량 발견: {count}개")
+                            self.logger.log_info(f"[파싱] 쿠폰 수량 발견: {count:,}개")
                 except Exception:
                     continue
             

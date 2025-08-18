@@ -296,23 +296,69 @@ class DStoreCrawler(BaseCrawler, StoreRepository):
     async def _parse_available_coupons(self, available_coupons: Dict):
         """보유 쿠폰 파싱 - 실제 D매장 구조에 맞게 수정"""
         try:
-            # 동적 ID 패턴으로 쿠폰 수량 파싱 (스크린샷 구조 기반)
-            # 패턴: div[id*="mf_wfm_body_wq_uuid_"] 내의 .w2textbox 또는 p.w2textbox
-            coupon_containers = await self.page.locator('div[id*="mf_wfm_body_wq_uuid_"]').all()
-            
+            self.logger.log_info("========== _parse_available_coupons 메소드 시작 ==========")
             parsed_coupons = []
-            for container in coupon_containers:
-                try:
-                    # w2textbox 클래스를 가진 요소에서 수량 추출
-                    textbox_elements = await container.locator('.w2textbox, p.w2textbox').all()
-                    for textbox in textbox_elements:
-                        count_text = await textbox.inner_text()
-                        if count_text and count_text.strip().isdigit():
-                            count = int(count_text.strip())
-                            parsed_coupons.append(count)
-                            self.logger.log_info(f"[파싱] 쿠폰 수량 발견: {count}개")
-                except Exception:
-                    continue
+            
+            # 1단계: 스크린샷에서 확인된 정확한 셀렉터로 시도
+            self.logger.log_info("[디버그] 1단계: 정확한 셀렉터로 파싱 시도")
+            
+            # 1시간 무료 쿠폰 수량 파싱 (정확한 셀렉터)
+            hour_coupon_element = self.page.locator('#mf_wfm_body_gen_dcTkList_0_discountTkRemainCnt.w2textbox')
+            hour_element_count = await hour_coupon_element.count()
+            self.logger.log_info(f"[디버그] 1시간 쿠폰 셀렉터 매칭 개수: {hour_element_count}")
+            
+            if hour_element_count > 0:
+                hour_text = await hour_coupon_element.inner_text()
+                self.logger.log_info(f"[디버그] 1시간 쿠폰 텍스트: '{hour_text}'")
+                if hour_text and hour_text.strip().replace(',', '').isdigit():
+                    hour_count = int(hour_text.strip().replace(',', ''))
+                    parsed_coupons.append(hour_count)
+                    self.logger.log_info(f"[1단계] 1시간 쿠폰 수량 발견: {hour_count:,}개")
+            
+            # 30분 유료 쿠폰 수량 파싱 (정확한 셀렉터)
+            min_coupon_element = self.page.locator('#mf_wfm_body_gen_dcTkList_1_discountTkRemainCnt.w2textbox')
+            min_element_count = await min_coupon_element.count()
+            self.logger.log_info(f"[디버그] 30분 쿠폰 셀렉터 매칭 개수: {min_element_count}")
+            
+            if min_element_count > 0:
+                min_text = await min_coupon_element.inner_text()
+                self.logger.log_info(f"[디버그] 30분 쿠폰 텍스트: '{min_text}'")
+                if min_text and min_text.strip().replace(',', '').isdigit():
+                    min_count = int(min_text.strip().replace(',', ''))
+                    parsed_coupons.append(min_count)
+                    self.logger.log_info(f"[1단계] 30분 쿠폰 수량 발견: {min_count:,}개")
+            
+            self.logger.log_info(f"[디버그] 1단계 완료, 파싱된 쿠폰 개수: {len(parsed_coupons)}")
+            
+            # 2단계: fallback으로 모든 가능한 셀렉터 시도
+            if not parsed_coupons:
+                self.logger.log_info("[디버그] 2단계: fallback으로 파싱 시도")
+                
+                # 더 광범위한 셀렉터로 모든 w2textbox 검사
+                all_textboxes = await self.page.locator('.w2textbox').all()
+                self.logger.log_info(f"[디버그] 전체 w2textbox 요소 개수: {len(all_textboxes)}")
+                
+                found_numbers = []
+                for i, textbox in enumerate(all_textboxes[:20]):  # 처음 20개만 검사
+                    try:
+                        text_content = await textbox.inner_text()
+                        if text_content and text_content.strip().replace(',', '').isdigit():
+                            number = int(text_content.strip().replace(',', ''))
+                            found_numbers.append(number)
+                            element_id = await textbox.get_attribute('id') or 'no-id'
+                            self.logger.log_info(f"[디버그] w2textbox #{i} (id: {element_id}): {number:,}")
+                    except Exception:
+                        continue
+                
+                # 쿠폰 수량으로 보이는 값들 선택
+                for number in found_numbers:
+                    if number >= 0:
+                        parsed_coupons.append(number)
+                        self.logger.log_info(f"[2단계] 쿠폰 수량 발견: {number:,}개")
+                
+                self.logger.log_info(f"[디버그] 2단계 완료, 파싱된 쿠폰 개수: {len(parsed_coupons)}")
+                
+            # 여기서 else 제거 - 잘못된 조건문에 걸려있었음
             
             # 파싱된 쿠폰을 순서대로 배정 (첫 번째가 1시간, 두 번째가 30분으로 추정)
             if len(parsed_coupons) >= 1:
@@ -327,29 +373,40 @@ class DStoreCrawler(BaseCrawler, StoreRepository):
                 available_coupons["30분 유료"] = {'car': min_count, 'total': min_count}
                 self.logger.log_info(f"[파싱] 30분 쿠폰 보유 수량: {min_count:,}개")
             
-            # 기존 고정 ID 방식도 fallback으로 유지
+            # 3단계: 기존 고정 ID 방식으로 최종 fallback
             if not parsed_coupons:
-                self.logger.log_info("[정보] 동적 파싱 실패, 고정 ID 방식으로 fallback 시도")
+                self.logger.log_info("[디버그] 3단계: 고정 ID 방식으로 fallback 시도")
                 
                 # 1시간 쿠폰 수량 파싱 (고정 ID)
                 hour_coupon_quantity = self.page.locator('#mf_wfm_body_wq_uuid_599 .w2textbox')
-                if await hour_coupon_quantity.count() > 0:
+                hour_fallback_count = await hour_coupon_quantity.count()
+                self.logger.log_info(f"[디버그] 고정 ID 1시간 쿠폰 셀렉터 매칭: {hour_fallback_count}")
+                
+                if hour_fallback_count > 0:
                     hour_count_text = await hour_coupon_quantity.first.inner_text()
+                    self.logger.log_info(f"[디버그] 고정 ID 1시간 쿠폰 텍스트: '{hour_count_text}'")
                     hour_count_match = re.search(r'(\d+)', hour_count_text.replace(',', ''))
                     if hour_count_match:
                         hour_count = int(hour_count_match.group(1))
                         available_coupons["1시간 무료"] = {'car': hour_count, 'total': hour_count}
-                        self.logger.log_info(f"[파싱] 1시간 쿠폰 보유 수량 (fallback): {hour_count:,}개")
+                        self.logger.log_info(f"[3단계] 1시간 쿠폰 보유 수량 (고정ID): {hour_count:,}개")
                 
                 # 30분 쿠폰 수량 파싱 (고정 ID)
                 min_coupon_quantity = self.page.locator('#mf_wfm_body_wq_uuid_605 .w2textbox')
-                if await min_coupon_quantity.count() > 0:
+                min_fallback_count = await min_coupon_quantity.count()
+                self.logger.log_info(f"[디버그] 고정 ID 30분 쿠폰 셀렉터 매칭: {min_fallback_count}")
+                
+                if min_fallback_count > 0:
                     min_count_text = await min_coupon_quantity.first.inner_text()
+                    self.logger.log_info(f"[디버그] 고정 ID 30분 쿠폰 텍스트: '{min_count_text}'")
                     min_count_match = re.search(r'(\d+)', min_count_text.replace(',', ''))
                     if min_count_match:
                         min_count = int(min_count_match.group(1))
                         available_coupons["30분 유료"] = {'car': min_count, 'total': min_count}
-                        self.logger.log_info(f"[파싱] 30분 쿠폰 보유 수량 (fallback): {min_count:,}개")
+                        self.logger.log_info(f"[3단계] 30분 쿠폰 보유 수량 (고정ID): {min_count:,}개")
+                
+                self.logger.log_info("[디버그] 3단계 완료 - 고정 ID 방식 파싱 종료")
+                return  # 고정 ID 방식 사용 시 여기서 종료
             
             # 보유 쿠폰량 체크 및 부족 시 텔레그램 알림 (A 매장과 동일한 로직)
             for coupon_name, counts in available_coupons.items():
