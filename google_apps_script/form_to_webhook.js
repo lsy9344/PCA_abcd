@@ -46,6 +46,27 @@ const SHEET_STORE_MAP = {
     description: '주차쿠폰 신청',
     aliases: ['B매장', 'B점', 'B', 'store_b', 'STORE_B']
   },
+  'C매장': {
+    store_id: 'C',
+    name: 'C매장',
+    vehicle_format: 'flexible',
+    description: '주차쿠폰 신청',
+    aliases: ['C매장', 'C점', 'C', 'store_c', 'STORE_C']
+  },
+  'D매장': {
+    store_id: 'D',
+    name: 'D매장',
+    vehicle_format: 'flexible',
+    description: '주차쿠폰 신청',
+    aliases: ['D매장', 'D점', 'D', 'store_d', 'STORE_D']
+  },
+  'E매장': {
+    store_id: 'E',
+    name: 'E매장',
+    vehicle_format: 'flexible',
+    description: '주차쿠폰 신청',
+    aliases: ['E매장', 'E점', 'E', 'store_e', 'STORE_E']
+  },
   '동탄점': {
     store_id: 'A',
     name: '동탄점',
