@@ -6,6 +6,7 @@ from adapters.d_store_adapter import DStoreAdapter
 from adapters.a_store_adapter import AStoreAdapter
 from adapters.b_store_adapter import BStoreAdapter
 from adapters.c_store_adapter import CStoreAdapter
+from adapters.e_store_adapter import EStoreAdapter
 from infrastructure.config.loader import load_runtime_options, load_telegram_config
 from infrastructure.config.config_manager import ConfigManager
 from infrastructure.logging.structured_logger import StructuredLogger
@@ -70,6 +71,13 @@ def get_store_adapter(store_id: str) -> StoreAdapter:
             structured_logger=structured_logger,
             notification_service=notification_service
         )
+    elif store_id_upper == 'E':
+        return EStoreAdapter(
+            store_config=store_config,
+            playwright_config=playwright_config,
+            structured_logger=structured_logger,
+            notification_service=notification_service
+        )
     else:
         raise ValueError(f"지원하지 않는 매장 ID입니다: {store_id}")
 
@@ -79,7 +87,8 @@ STORE_REGISTRY: Dict[str, Type[StoreAdapter]] = {
     'D': DStoreAdapter,
     'A': AStoreAdapter,
     'B': BStoreAdapter,
-    'C': CStoreAdapter
+    'C': CStoreAdapter,
+    'E': EStoreAdapter
 }
 
 

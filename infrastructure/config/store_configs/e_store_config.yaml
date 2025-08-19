@@ -1,0 +1,124 @@
+# E매장 설정 (B매장과 동일한 구조)
+store:
+  id: "E"
+  name: "E매장"
+  website_url: "https://a18120.pweb.kr/login"
+  
+login:
+  username: "508"
+  password: "1111"
+
+# 쿠폰 설정 - 시간 독립적 설계 (4_discount_logic.mdc 기반)
+# E 매장 특징: 1시간 단위 유료 쿠폰, 주말 전용 쿠폰 없음 (PAID로 fallback)
+coupons:
+  FREE_COUPON:
+    name: "(무료) 1시간할인"
+    type: "FREE"
+    duration_minutes: 60
+    priority: 0
+  PAID_COUPON:
+    name: "(유료) 1시간할인"
+    type: "PAID"
+    duration_minutes: 60  # E매장 특징: 1시간 단위
+    priority: 1
+  # WEEKEND 타입 쿠폰 없음 → 주말에도 PAID 타입 사용 (fallback)
+
+# 할인 정책 - 시간 기반 (분 단위)
+policy:
+  weekday_target_minutes: 180  # 3시간
+  weekend_target_minutes: 120  # 2시간
+
+# 웹 셀렉터 (백업 크롤러에서 검증된 정확한 셀렉터)
+selectors:
+  # 로그인 관련 - 백업 크롤러에서 사용하는 get_by_role 방식
+  login:
+    username_input: 'role=textbox[name="ID"]'  # line 35: get_by_role('textbox', name='ID')
+    password_input: 'role=textbox[name="PASSWORD"]'  # line 36: get_by_role('textbox', name='PASSWORD')
+    login_button: 'role=button[name="Submit"]'  # line 37: get_by_role('button', name='Submit')
+    login_success_indicator: 'role=textbox[name="차량번호"]'  # line 45: get_by_role('textbox', name='차량번호')
+    search_state_checkbox: '#checkSaveID'  # line 189: 검색 상태 유지 체크박스
+  
+  # 팝업 처리 - 백업 크롤러에서 검증된 셀렉터
+  popups:
+    notice_popup: 'text=안내'  # line 176: 안내 팝업
+    ok_button: 'text=OK'  # line 177: 일반 OK 버튼
+    modal_ok_button: '.modal-buttons a:has-text("OK")'  # line 319: 쿠폰 적용 후 모달 팝업
+  
+  # 차량 검색 - 백업 크롤러에서 검증된 셀렉터
+  search:
+    car_number_input: 'role=textbox[name="차량번호"]'  # line 67: get_by_role('textbox', name='차량번호')
+    search_button: 'role=button[name="검색"]'  # line 70: get_by_role('button', name='검색')
+    no_result_message: 'text=검색 결과가 없습니다'  # line 78-79: 검색 결과 없음 패턴
+    no_result_message2: 'text=검색된 차량이 없습니다'  # line 79: 추가 패턴
+  
+  # 쿠폰 관련 - 백업 크롤러에서 검증된 셀렉터
+  coupons:
+    free_1hour_link: 'a:has-text("(무료) 1시간할인")'  # E매장: 무료 1시간할인 링크
+    paid_1hour_link: 'a:has-text("(유료) 1시간할인")'  # E매장: 유료 1시간할인 링크
+    remaining_amount: 'text=남은잔여량'  # line 223: 남은잔여량 텍스트
+    
+    # 할인내역 테이블 셀렉터 (2025-08-16 파싱 문제 해결로 업데이트)
+    # 우선순위 순으로 시도 - 공통 쿠폰 계산기에서 사용
+    discount_selectors:
+      - "tr.ev_dhx_skyblue"     # E 매장 기본 행 (짝수)
+      - "tr.odd_dhx_skyblue"    # E 매장 홀수 행  
+      - "tr.rowselected"        # 선택된 행
+      - "#gridDtl tr"           # 할인내역 그리드 내 행
+      - ".gridbox tr"           # 그리드박스 내 행
+    
+    # 쿠폰 이름 → 키 매핑 (공통 쿠폰 계산기용)
+    coupon_key_mapping:
+      "(무료) 1시간할인": "FREE_COUPON"
+      "(유료) 1시간할인": "PAID_COUPON"
+    
+    # E 매장 테이블 데이터 구조 정보
+    table_structure:
+      description: "번호 | 할인값 | 등록자 | 등록일"
+      coupon_name_cell_index: 1  # 쿠폰명이 있는 셀 인덱스 (0부터 시작)
+      quantity_per_row: 1        # E 매장은 항상 행당 1개 쿠폰
+      example: "1 | (유료) 1시간할인 | 508(관리자) | 2025-08-19 08:59:07.977"
+  
+  # 페이지 URL
+  urls:
+    login: "/login"
+    discount_registration: "/discount/registration"
+    discount_status: "/state/doViewMst"
+    discount_purchase: "/pay/doViewDscnt"
+
+# 차량 검색 실패 감지 설정
+search_failure_detection:
+  # 우선순위 순으로 시도할 감지 방법들
+  methods:
+    - type: "text_pattern"           # E매장 주요 패턴
+      patterns: 
+        - "검색 결과가 없습니다. 출차된 차량은 검색되지 않습니다."
+        - "검색 결과가 없습니다"
+        - "검색된 차량이 없습니다"
+        - "차량을 찾을 수 없습니다"
+        - "등록된 차량이 없습니다"
+      priority: 1
+      
+    - type: "locator_check"          # Playwright 로케이터 직접 사용
+      locators:
+        - 'text="검색 결과가 없습니다. 출차된 차량은 검색되지 않습니다."'
+        - 'text="검색 결과가 없습니다"'
+        - 'text="검색된 차량이 없습니다"'
+      priority: 2
+      
+    - type: "popup_detection"        # 팝업창 감지
+      selectors:
+        - ".modal"
+        - ".popup"
+        - "div[role='dialog']"
+      text_patterns: ["검색", "결과", "없음", "차량"]
+      priority: 3
+
+  # 팝업 닫기 설정
+  popup_close:
+    selectors:
+      - 'text=OK'
+      - 'text=확인'
+      - 'text=닫기'
+      - 'button:has-text("OK")'
+      - 'button:has-text("확인")'
+      - '.btn-close'
