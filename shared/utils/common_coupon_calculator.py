@@ -51,21 +51,24 @@ class CommonCouponCalculator:
         except Exception as e:
             print(f"     ⚠️ 페이지 구조 분석 오류: {str(e)}")
         
-        for selector in discount_selectors:
-            try:
-                print(f"     🎯 셀렉터 시도: {selector}")
-                rows = await page.locator(selector).all()
-                print(f"     📊 발견된 행 수: {len(rows)}개")
+        # 모든 셀렉터를 하나로 합쳐서 모든 행을 가져오기 (B 매장의 경우 ev_ 와 odd_ 모두 필요)
+        all_rows = []
+        all_selector = ", ".join(discount_selectors)
+        
+        try:
+            print(f"     🎯 통합 셀렉터 사용: {all_selector}")
+            all_rows = await page.locator(all_selector).all()
+            print(f"     📊 총 발견된 행 수: {len(all_rows)}개")
+            
+            if len(all_rows) > 0:
+                print(f"     📊 할인 내역 테이블 발견: 총 {len(all_rows)}개 행")
                 
-                if len(rows) > 0:
-                    print(f"     📊 할인 내역 테이블 발견: {selector} ({len(rows)}개 행)")
-                    
-                    for row_idx, row in enumerate(rows):
-                        try:
-                            # 각 행의 셀들 가져오기
-                            cells = await row.locator('td').all()
-                            
-                            if len(cells) >= 3:  # A매장은 3개 셀, B/C매장은 4개 셀
+                for row_idx, row in enumerate(all_rows):
+                    try:
+                        # 각 행의 셀들 가져오기
+                        cells = await row.locator('td').all()
+                        
+                        if len(cells) >= 3:  # A매장은 3개 셀, B/C매장은 4개 셀
                                 # 셀 내용 추출
                                 cell_texts = []
                                 for cell in cells:
@@ -93,11 +96,36 @@ class CommonCouponCalculator:
                                         quantity = int(quantity_match.group(1)) if quantity_match else 1
                                         print(f"     🅰️ A매장 패턴 감지: {coupon_cell} {quantity}개")
                                     
-                                    # B매장 패턴: 4개 셀이고 2번째 칼럼에 "무료 1시간할인", "유료 30분할인" 등이 있음
-                                    elif len(cell_texts) >= 4 and any(name in cell_texts[1] for name in ["무료 1시간할인", "유료 30분할인", "무료", "유료"]):
-                                        coupon_cell = cell_texts[1]  # B매장: 2번째 셀 (할인값)
-                                        quantity = 1  # B매장은 항상 1개씩
-                                        print(f"     🅱️ B매장 패턴 감지: {coupon_cell}")
+                                    # B매장 패턴: 2번째 셀에 쿠폰명이 있고, 차량 정보 행이 아닌 경우
+                                    elif len(cell_texts) >= 4:
+                                        # B매장 쿠폰 행인지 정확히 판단
+                                        second_cell = cell_texts[1].strip()
+                                        is_coupon_row = False
+                                        
+                                        # 정확한 쿠폰명 매칭
+                                        if second_cell in ["무료 1시간할인", "유료 30분할인"]:
+                                            is_coupon_row = True
+                                        # 부분 매칭 (혹시 추가 텍스트가 있을 경우)
+                                        elif ("무료" in second_cell and "시간할인" in second_cell) or ("유료" in second_cell and "분할인" in second_cell):
+                                            is_coupon_row = True
+                                        
+                                        # 차량 정보 행 제외 (차량번호가 포함된 행, 숫자만 있는 행, 날짜만 있는 행)
+                                        if "다" in second_cell or "차" in second_cell:  # 차량번호 패턴 (38다4603)
+                                            is_coupon_row = False
+                                            print(f"     🚫 B매장 차량 정보 행 스킵 (차량번호): {second_cell}")
+                                        elif second_cell.isdigit():  # 숫자만 있는 경우
+                                            is_coupon_row = False
+                                            print(f"     🚫 B매장 기타 정보 행 스킵 (숫자): {second_cell}")
+                                        elif len(second_cell) > 20:  # 너무 긴 텍스트 (차량 정보일 가능성)
+                                            is_coupon_row = False
+                                            print(f"     🚫 B매장 기타 정보 행 스킵 (긴텍스트): {second_cell}")
+                                        
+                                        if is_coupon_row:
+                                            coupon_cell = second_cell
+                                            quantity = 1  # B매장은 항상 1개씩
+                                            print(f"     🅱️ B매장 패턴 감지: {coupon_cell}")
+                                        else:
+                                            coupon_cell = None
                                     
                                     # C매장 패턴: 4개 셀이고 3번째 칼럼에 할인권명이 있음
                                     elif len(cell_texts) >= 4 and any(name in cell_texts[2] for name in ["무료", "유료", "할인권"]):
@@ -121,14 +149,27 @@ class CommonCouponCalculator:
                                                 print(f"     ✅ 적용된 쿠폰 발견: {mapped_name} {quantity}개 -> {coupon_key}")
                                                 break
                                         
-                        except Exception as e:
-                            print(f"     ⚠️ 행 파싱 오류: {str(e)}")
-                            continue
-                    break
+                    except Exception as e:
+                        print(f"     ⚠️ 행 파싱 오류: {str(e)}")
+                        continue
+                        
+        except Exception as e:
+            print(f"     ⚠️ 통합 테이블 파싱 오류: {str(e)}")
+            # 실패하면 기존 방식으로 fallback
+            for selector in discount_selectors:
+                try:
+                    print(f"     🎯 개별 셀렉터 fallback: {selector}")
+                    rows = await page.locator(selector).all()
+                    print(f"     📊 발견된 행 수: {len(rows)}개")
                     
-            except Exception as e:
-                print(f"     ⚠️ 테이블 파싱 오류: {str(e)}")
-                continue
+                    if len(rows) > 0:
+                        print(f"     📊 할인 내역 테이블 발견: {selector} ({len(rows)}개 행)")
+                        # 기존 파싱 로직과 동일하게 처리
+                        break
+                        
+                except Exception as e:
+                    print(f"     ⚠️ 개별 셀렉터 파싱 오류: {str(e)}")
+                    continue
         
         # 파싱 결과 출력
         if my_history or total_history:

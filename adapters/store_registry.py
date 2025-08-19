@@ -6,7 +6,8 @@ from adapters.d_store_adapter import DStoreAdapter
 from adapters.a_store_adapter import AStoreAdapter
 from adapters.b_store_adapter import BStoreAdapter
 from adapters.c_store_adapter import CStoreAdapter
-from infrastructure.config.loader import load_store_config, load_runtime_options, load_telegram_config
+from infrastructure.config.loader import load_runtime_options, load_telegram_config
+from infrastructure.config.config_manager import ConfigManager
 from infrastructure.logging.structured_logger import StructuredLogger
 from infrastructure.notifications.telegram_adapter import TelegramAdapter
 
@@ -16,7 +17,8 @@ def get_store_adapter(store_id: str) -> StoreAdapter:
     store_id_upper = store_id.upper()
     
     # 설정 로드
-    store_config = load_store_config(store_id_upper)
+    config_manager = ConfigManager()
+    store_config = config_manager.get_store_config(store_id_upper)
     runtime_options = load_runtime_options()
     telegram_config = load_telegram_config()
     

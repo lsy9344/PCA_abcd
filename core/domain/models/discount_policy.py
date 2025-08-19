@@ -73,10 +73,17 @@ def calculate_dynamic_coupons(
     applications = {}
     remaining_minutes = target_minutes
     
-    # 현재 적용된 시간 계산
+    # 현재 적용된 시간 계산 (무료 쿠폰은 전체 이력, 유료 쿠폰은 매장별 이력)
     current_minutes = 0
     for config in coupon_configs:
-        used_count = my_history.get(config.coupon_key, 0)
+        if config.coupon_type == 'FREE':
+            # 무료 쿠폰: 전체 이력과 매장 이력 중 최대값 사용
+            total_used = total_history.get(config.coupon_key, 0)
+            my_used = my_history.get(config.coupon_key, 0)
+            used_count = max(total_used, my_used)
+        else:
+            # 유료/주말 쿠폰: 매장별 이력만 사용
+            used_count = my_history.get(config.coupon_key, 0)
         current_minutes += used_count * config.duration_minutes
     
     remaining_minutes = max(0, target_minutes - current_minutes)

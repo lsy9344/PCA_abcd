@@ -55,9 +55,14 @@ class BStoreCrawler(BaseCrawler, StoreRepository):
             self.logger.log_error(ErrorCode.FAIL_AUTH, "로그인", f"로그인 또는 페이지 로드 실패: {str(e)}")
             return False
 
-    async def search_vehicle(self, vehicle: Vehicle) -> bool:
+    async def search_vehicle(self, vehicle) -> bool:
         """차량 검색 (체크박스 확인 및 입차일 설정 로직 포함)"""
         try:
+            # 문자열인 경우 Vehicle 객체로 변환
+            if isinstance(vehicle, str):
+                from core.domain.models.vehicle import Vehicle
+                vehicle = Vehicle(number=vehicle)
+            
             # [수정] 차량 검색을 시작하기 전에, 검색 기능의 일부인 체크박스 상태를 먼저 확인합니다.
             await self._ensure_search_state_checkbox(self.page)
 
@@ -84,11 +89,35 @@ class BStoreCrawler(BaseCrawler, StoreRepository):
             self.logger.log_info(f"[성공] 검색 버튼 클릭 완료")
             await self.page.wait_for_timeout(2000)
             
-            # 공통 차량 검색 실패 감지 로직 사용 (설정 기반)
-            if await self.check_no_vehicle_found_by_config(self.page, car_number):
-                self.logger.log_error(ErrorCode.NO_VEHICLE, "차량검색", f"차량번호 {car_number} 검색 결과 없음")
-                return False
             
+            # test_b_store_ui_2.py 방식: 직접적인 검색 결과 없음 패턴 체크
+            no_result_patterns = [
+                'text=검색 결과가 없습니다', 'text="검색 결과가 없습니다"',
+                'text=검색된 차량이 없습니다', 'text="검색된 차량이 없습니다"'
+            ]
+            
+            for pattern in no_result_patterns:
+                no_result = self.page.locator(pattern)
+                if await no_result.count() > 0:
+                    self.logger.log_warning(f"[경고] 검색 결과 없음 팝업 감지: {pattern}")
+                    
+                    # 팝업 닫기 처리 (test_b_store_ui_2.py 방식)
+                    close_buttons = ['text=OK', 'text="OK"', 'text=확인', 'text="확인"']
+                    for close_button_selector in close_buttons:
+                        close_button = self.page.locator(close_button_selector)
+                        if await close_button.count() > 0:
+                            await close_button.click()
+                            await self.page.wait_for_timeout(1000)
+                            self.logger.log_info("[성공] 검색 결과 없음 팝업 닫기 완료")
+                            break
+                    
+                    # 텔레그램 알림 전송
+                    await self._send_no_vehicle_notification(car_number)
+                    
+                    self.logger.log_error(ErrorCode.NO_VEHICLE, "차량검색", f"차량번호 {car_number} 검색 결과 없음")
+                    return False
+            
+            # 검색 성공 (팝업이 없으면 성공으로 간주)
             self.logger.log_info(f"[성공] 차량번호 '{car_number}' 검색 성공")
             return True
             
@@ -96,9 +125,14 @@ class BStoreCrawler(BaseCrawler, StoreRepository):
             self.logger.log_error(ErrorCode.FAIL_SEARCH, "차량검색", str(e))
             return False
 
-    async def get_coupon_history(self, vehicle: Vehicle) -> CouponHistory:
+    async def get_coupon_history(self, vehicle) -> CouponHistory:
         """쿠폰 이력 조회 - B 매장 통합 로직 사용"""
         try:
+            # 문자열인 경우 Vehicle 객체로 변환
+            if isinstance(vehicle, str):
+                from core.domain.models.vehicle import Vehicle
+                vehicle = Vehicle(number=vehicle)
+            
             # 통합 로직을 사용하여 현재 적용된 쿠폰 파싱
             my_history, total_history = await self._parse_current_applied_coupons()
             
@@ -325,6 +359,22 @@ class BStoreCrawler(BaseCrawler, StoreRepository):
             if await self._count_discount_rows(page) > previous_count:
                 return True
         return False
+
+    async def _send_no_vehicle_notification(self, car_number: str):
+        """차량 검색 결과 없음 텔레그램 알림"""
+        try:
+            if self.notification_service:
+                message = f"차량 검색 실패 알림\n\n매장: {self.store_id}\n차량번호: {car_number}\n상태: 검색된 차량이 없습니다"
+                await self.notification_service.send_success_notification(
+                    message=message, 
+                    store_id=self.store_id
+                )
+                self.logger.log_info("[성공] 차량 검색 실패 텔레그램 알림 전송 완료")
+            else:
+                self.logger.log_warning("[경고] 텔레그램 알림 서비스가 설정되지 않음")
+                
+        except Exception as e:
+            self.logger.log_error(ErrorCode.FAIL_NOTIFICATION, "텔레그램알림", f"텔레그램 알림 전송 중 오류: {str(e)}")
 
     async def cleanup(self) -> None:
         """리소스 정리 - StoreRepository 인터페이스 구현"""

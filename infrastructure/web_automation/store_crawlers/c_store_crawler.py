@@ -2,9 +2,7 @@
 C 매장 크롤러 구현 - MCP 통합 버전
 """
 import asyncio
-import os
 import re
-import yaml
 from typing import Dict, List, Optional, Any
 from playwright.async_api import Page, TimeoutError
 
@@ -22,8 +20,8 @@ class CStoreCrawler(BaseCrawler, StoreRepository):
         super().__init__(store_config, playwright_config, structured_logger, notification_service)
         self.store_id = "C"
         
-        # C 매장 yaml 설정 로드
-        self.c_store_config = self._load_c_store_config()
+        # ConfigManager를 통한 통합 설정 사용 (92번 지침 준수)
+        # store_config는 이미 ConfigManager에서 완전한 객체로 전달됨
         
         # 설정 파일에서 로그인 정보 로드 (다른 매장과 동일)
         self.username = self.store_config.login_username
@@ -32,35 +30,6 @@ class CStoreCrawler(BaseCrawler, StoreRepository):
         self.user_id = self.username  # 기존 호환성 유지
         self.logger = OptimizedLogger("c_store_crawler", "C")
     
-    def _load_c_store_config(self) -> Dict:
-        """C 매장 yaml 설정 로드"""
-        config_path = os.path.join(
-            os.path.dirname(__file__), 
-            '../../config/store_configs/c_store_config.yaml'
-        )
-        
-        try:
-            with open(config_path, 'r', encoding='utf-8') as f:
-                return yaml.safe_load(f)
-        except Exception as e:
-            self.logger.log_error(ErrorCode.FAIL_PARSE, "설정로드", f"C 매장 설정 파일 로드 실패: {e}")
-            # 기본값 반환
-            return {
-                'coupons': {
-                    'FREE_2HOUR': {
-                        'name': '무료 2시간할인',
-                        'type': 'FREE',
-                        'duration_minutes': 120,
-                        'priority': 0
-                    },
-                    'PAID_1HOUR': {
-                        'name': '1시간 유료할인권',
-                        'type': 'PAID',
-                        'duration_minutes': 60,
-                        'priority': 1
-                    }
-                }
-            }
 
     async def login(self, vehicle: Optional[Vehicle] = None) -> bool:
         """C 매장 로그인"""
@@ -117,6 +86,8 @@ class CStoreCrawler(BaseCrawler, StoreRepository):
             # 검색 결과 없음 팝업 확인 (UI 테스트와 동일한 로직)
             no_result_message = 'text=검색된 차량이 없습니다'
             if await self.page.locator(no_result_message).count() > 0:
+                # 텔레그램 알림 전송
+                await self._send_no_vehicle_notification(car_number)
                 self.logger.log_error(ErrorCode.NO_VEHICLE, "차량검색", f"차량번호 {car_number} 검색 결과 없음")
                 # 팝업 닫기
                 await self._handle_no_result_popup()
@@ -137,38 +108,74 @@ class CStoreCrawler(BaseCrawler, StoreRepository):
     async def get_coupon_history(self, vehicle: Vehicle) -> CouponHistory:
         """쿠폰 이력 조회"""
         try:
+            self.logger.log_info("[C 매장] get_coupon_history 시작")
             my_history = {}
             total_history = {}
             available_coupons = {}
             
-            # 기본 쿠폰 정보 설정 (실제 구현 시 페이지에서 파싱)
-            coupon_configs = self.c_store_config['coupons']
-            for coupon_key, coupon_info in coupon_configs.items():
-                available_coupons[coupon_info['name']] = {'car': 0, 'total': 0}
+            # 페이지 안전성 검사 (92번 지침)
+            self.logger.log_info("[C 매장] 페이지 안전성 검사 시작")
+            if not await self._safe_page_check():
+                self.logger.log_warning("페이지 상태 불안정 - 빈 이력 반환")
+                return self._empty_coupon_history(vehicle.number)
+            self.logger.log_info("[C 매장] 페이지 안전성 검사 통과")
+            
+            # 기본 쿠폰 정보 설정 (YAML 파일에서 직접 로드)
+            self.logger.log_info("[C 매장] 쿠폰 설정 로드 시작")
+            try:
+                # C 매장 설정 로드 (YAML 파일에서 직접)
+                import yaml
+                from pathlib import Path
+                
+                config_path = Path("infrastructure/config/store_configs/c_store_config.yaml")
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    config = yaml.safe_load(f)
+                
+                coupon_configs = config.get('coupons', {})
+                for coupon_key, coupon_info in coupon_configs.items():
+                    available_coupons[coupon_info['name']] = {'car': 0, 'total': 0}
+                self.logger.log_info(f"[C 매장] 쿠폰 설정 로드 완료: {list(available_coupons.keys())}")
+            except Exception as config_e:
+                self.logger.log_error(ErrorCode.FAIL_PARSE, "쿠폰설정", f"쿠폰 설정 로드 실패: {str(config_e)}")
+                raise
+            
+            # C 매장은 my_history가 없음 (설정 파일 기준)
+            my_history = {}
             
             # 쿠폰 리스트 파싱
-            await self._parse_available_coupons(available_coupons)
+            self.logger.log_info("[C 매장] _parse_available_coupons 호출 시작")
+            try:
+                await self._parse_available_coupons(available_coupons)
+                self.logger.log_info("[C 매장] _parse_available_coupons 완료")
+            except Exception as parse_e:
+                self.logger.log_error(ErrorCode.FAIL_PARSE, "사용가능쿠폰", f"사용 가능 쿠폰 파싱 실패: {str(parse_e)}")
+                # 계속 진행 (사용 가능 쿠폰 파싱 실패해도 히스토리는 파싱 시도)
             
-            # 사용 이력 파싱
-            await self._parse_coupon_history(my_history, total_history)
+            # 사용 이력 파싱 (C 매장 전용 로직)
+            self.logger.log_info("[C 매장] _parse_coupon_history_c_store 호출 시작")
+            try:
+                await self._parse_coupon_history_c_store(total_history)
+                self.logger.log_info(f"[C 매장] _parse_coupon_history_c_store 호출 완료, total_history: {total_history}")
+            except Exception as history_e:
+                self.logger.log_error(ErrorCode.FAIL_PARSE, "쿠폰이력", f"쿠폰 이력 파싱 실패: {str(history_e)}")
+                # 계속 진행 (이력 파싱 실패해도 결과는 반환)
             
-            return CouponHistory(
+            self.logger.log_info("[C 매장] CouponHistory 객체 생성")
+            result = CouponHistory(
                 store_id=self.store_id,
                 vehicle_id=vehicle.number,
                 my_history=my_history,
                 total_history=total_history,
                 available_coupons=available_coupons
             )
+            self.logger.log_info("[C 매장] get_coupon_history 완료")
+            return result
             
         except Exception as e:
             self.logger.log_error(ErrorCode.FAIL_PARSE, "쿠폰조회", str(e))
-            return CouponHistory(
-                store_id=self.store_id,
-                vehicle_id=vehicle.number,
-                my_history={},
-                total_history={},
-                available_coupons={}
-            )
+            import traceback
+            self.logger.log_error(ErrorCode.FAIL_PARSE, "쿠폰조회상세", f"상세 오류: {traceback.format_exc()}")
+            return self._empty_coupon_history(vehicle.number)
 
     async def apply_coupons(self, applications: List[CouponApplication]) -> bool:
         """쿠폰 적용 - MCP 통합 버전"""
@@ -278,64 +285,39 @@ class CStoreCrawler(BaseCrawler, StoreRepository):
         except Exception as e:
             self.logger.log_warning(f"[경고] 쿠폰 리스트 파싱 실패: {str(e)}")
 
-    async def _parse_coupon_history(self, my_history: Dict, total_history: Dict):
-        """쿠폰 사용 이력 파싱"""
-        try:
-            history_selector = self.store_config.selectors['coupons']['discount_history']
-            
-            if await self.page.locator(history_selector).count() > 0:
-                rows = await self.page.locator(f"{history_selector} tr").all()
-                for row in rows:
-                    try:
-                        cells = await row.locator('td').all_text_contents()
-                        if len(cells) >= 3:
-                            # 사용자, 쿠폰타입, 사용일시 등 파싱
-                            user_info = cells[0].strip()
-                            coupon_type = cells[1].strip()
-                            
-                            # 쿠폰 타입 매핑
-                            mapped_type = self._map_coupon_type(coupon_type)
-                            if mapped_type:
-                                total_history[mapped_type] = total_history.get(mapped_type, 0) + 1
-                                
-                                # 현재 사용자의 이력인지 확인
-                                if self.user_id in user_info:
-                                    my_history[mapped_type] = my_history.get(mapped_type, 0) + 1
-                                    
-                    except Exception:
-                        continue
-                        
-        except Exception as e:
-            self.logger.log_warning(f"[경고] 쿠폰 이력 파싱 실패: {str(e)}")
 
     def _map_coupon_type(self, coupon_text: str) -> Optional[str]:
-        """쿠폰 텍스트를 표준 타입으로 매핑 - 설정 기반 동적 매핑"""
-        # 설정에서 쿠폰 정보를 가져와서 텍스트와 매칭
-        for coupon_key, coupon_info in self.c_store_config['coupons'].items():
-            coupon_name = coupon_info['name']
-            
-            # 쿠폰 이름이 텍스트에 포함되는지 확인
-            # 또는 키워드 기반 매칭 (예: "무료", "2시간", "유료", "1시간" 등)
-            if coupon_name in coupon_text:
-                return coupon_key
-            
-            # 백업 매칭: 키워드 기반
-            # FREE_2HOUR의 경우: "무료"와 "2시간" 키워드 포함
-            if coupon_info['type'] == 'FREE' and "무료" in coupon_text:
-                # 시간 정보 매칭 (예: 120분 = 2시간)
-                duration_hours = coupon_info['duration_minutes'] // 60
-                if f"{duration_hours}시간" in coupon_text:
+        """쿠폰 텍스트를 표준 타입으로 매핑 - ConfigManager 기반 동적 매핑"""
+        try:
+            # ConfigManager에서 로드된 설정 사용 (92번 지침)
+            for coupon_key, coupon_info in self.store_config.coupons.items():
+                coupon_name = coupon_info['name']
+                
+                # 쿠폰 이름이 텍스트에 포함되는지 확인
+                if coupon_name in coupon_text:
                     return coupon_key
-                    
-            # PAID_1HOUR의 경우: "유료"와 "1시간" 키워드 포함  
-            elif coupon_info['type'] == 'PAID' and "유료" in coupon_text:
-                # 시간 정보 매칭
-                duration_hours = coupon_info['duration_minutes'] // 60
-                if f"{duration_hours}시간" in coupon_text:
-                    return coupon_key
-        
-        # 매칭되지 않으면 None 반환
-        return None
+                
+                # 백업 매칭: 키워드 기반
+                # FREE_2HOUR의 경우: "무료"와 "2시간" 키워드 포함
+                if coupon_info['type'] == 'FREE' and "무료" in coupon_text:
+                    # 시간 정보 매칭 (예: 120분 = 2시간)
+                    duration_hours = coupon_info['duration_minutes'] // 60
+                    if f"{duration_hours}시간" in coupon_text:
+                        return coupon_key
+                        
+                # PAID_1HOUR의 경우: "유료"와 "1시간" 키워드 포함  
+                elif coupon_info['type'] == 'PAID' and "유료" in coupon_text:
+                    # 시간 정보 매칭
+                    duration_hours = coupon_info['duration_minutes'] // 60
+                    if f"{duration_hours}시간" in coupon_text:
+                        return coupon_key
+            
+            # 매칭되지 않으면 None 반환
+            return None
+            
+        except Exception as e:
+            self.logger.log_warning(f"쿠폰 타입 매핑 오류: {str(e)}")
+            return None
 
     async def _apply_single_coupon(self, coupon_name: str, sequence: int) -> bool:
         """단일 쿠폰 적용"""
@@ -712,6 +694,142 @@ class CStoreCrawler(BaseCrawler, StoreRepository):
         except Exception as e:
             self.logger.log_error(ErrorCode.FAIL_PARSE, "MCP쿠폰상태", f"MCP 쿠폰 상태 파싱 중 오류: {str(e)}")
             return {}
+
+    async def _safe_page_check(self) -> bool:
+        """페이지 안전성 검사 (92번 지침 패턴)"""
+        try:
+            # 1. 페이지 닫힘 상태 확인
+            if self.page.is_closed():
+                self.logger.log_warning("페이지가 이미 닫혔습니다 - 파싱 불가")
+                return False
+            
+            # 2. URL 접근 가능성 확인
+            try:
+                current_url = self.page.url
+                self.logger.log_info(f"현재 페이지 URL: {current_url}")
+            except Exception as e:
+                self.logger.log_warning(f"페이지 상태 확인 실패: {str(e)}")
+                return False
+            
+            return True
+            
+        except Exception as e:
+            self.logger.log_error(ErrorCode.FAIL_PARSE, "페이지안전성", f"안전성 검사 실패: {str(e)}")
+            return False
+
+    def _empty_coupon_history(self, vehicle_id: str) -> CouponHistory:
+        """빈 쿠폰 이력 반환"""
+        return CouponHistory(
+            store_id=self.store_id,
+            vehicle_id=vehicle_id,
+            my_history={},
+            total_history={},
+            available_coupons={}
+        )
+
+    async def _parse_coupon_history_c_store(self, total_history: Dict):
+        """쿠폰 사용 이력 파싱 - C 매장 전용 (CommonCouponCalculator 사용)"""
+        try:
+            # 페이지 안전성 검사
+            if not await self._safe_page_check():
+                return
+            
+            # C 매장 설정에서 정보 가져오기 (YAML 파일에서 직접 로드)
+            from shared.utils.common_coupon_calculator import CommonCouponCalculator
+            import yaml
+            from pathlib import Path
+            
+            # C 매장 설정 로드 (YAML 파일에서 직접)
+            config_path = Path("infrastructure/config/store_configs/c_store_config.yaml")
+            with open(config_path, 'r', encoding='utf-8') as f:
+                config = yaml.safe_load(f)
+            
+            # 쿠폰 관련 설정 추출
+            coupon_config = config.get('selectors', {}).get('coupons', {})
+            coupon_key_mapping = coupon_config.get('coupon_key_mapping', {})
+            discount_selectors = coupon_config.get('discount_selectors', [])
+            has_my_history = coupon_config.get('table_structure', {}).get('has_my_history', False)
+            
+            self.logger.log_info(f"[C 매장] CommonCouponCalculator를 사용하여 쿠폰 파싱 시작")
+            self.logger.log_info(f"[C 매장] 쿠폰 매핑: {coupon_key_mapping}")
+            self.logger.log_info(f"[C 매장] 할인 셀렉터: {discount_selectors}")
+            self.logger.log_info(f"[C 매장] has_my_history: {has_my_history}")
+            
+            # 할인 내역 테이블이 로드될 때까지 대기
+            try:
+                await self.page.wait_for_selector("tbody[id='discountlist']", timeout=5000)
+                self.logger.log_info("[C 매장] 할인 내역 테이블 로드 확인")
+            except:
+                self.logger.log_warning("[C 매장] 할인 내역 테이블을 찾을 수 없음")
+            
+            # 공통 유틸리티로 파싱 (C 매장은 my_history 사용 안함)
+            self.logger.log_info("[C 매장] CommonCouponCalculator.parse_applied_coupons 호출 시작")
+            my_history, parsed_total_history = await CommonCouponCalculator.parse_applied_coupons(
+                self.page,
+                coupon_key_mapping,
+                discount_selectors,
+                has_my_history=has_my_history
+            )
+            self.logger.log_info(f"[C 매장] CommonCouponCalculator.parse_applied_coupons 결과: my_history={my_history}, parsed_total_history={parsed_total_history}")
+            
+            # C 매장 특성: my_history는 항상 빈 딕셔너리, total_history만 사용
+            total_history.clear()
+            total_history.update(parsed_total_history)
+            
+            # CommonCouponCalculator가 실패했을 경우 C 매장 전용 로직 시도
+            if not total_history:
+                self.logger.log_info("[C 매장] CommonCouponCalculator 결과가 비어있어 C 매장 전용 파싱 시도")
+                try:
+                    # 할인내역 테이블에서 직접 파싱
+                    for selector in discount_selectors:
+                        if await self.page.locator(selector).count() > 0:
+                            self.logger.log_info(f"[C 매장] 직접 파싱 - 셀렉터: {selector}")
+                            rows = await self.page.locator(selector).all()
+                            
+                            for idx, row in enumerate(rows):
+                                try:
+                                    cells = await row.locator('td').all()
+                                    if len(cells) >= 4:
+                                        cell_texts = []
+                                        for cell in cells:
+                                            cell_text = await cell.inner_text()
+                                            cell_texts.append(cell_text.strip())
+                                        
+                                        self.logger.log_info(f"[C 매장] 행 {idx+1} 셀 내용: {' | '.join(cell_texts)}")
+                                        
+                                        # C 매장 구조: 삭제 | 날짜 | 할인권명 | 수량
+                                        if len(cell_texts) >= 4:
+                                            coupon_name = cell_texts[2]  # 할인권명
+                                            quantity_text = cell_texts[3]  # 수량
+                                            
+                                            self.logger.log_info(f"[C 매장] 쿠폰명: '{coupon_name}', 수량: '{quantity_text}'")
+                                            
+                                            # 수량 추출
+                                            import re
+                                            quantity_match = re.search(r'(\d+)', quantity_text)
+                                            quantity = int(quantity_match.group(1)) if quantity_match else 1
+                                            
+                                            # 쿠폰 키 매핑
+                                            for mapped_name, coupon_key in coupon_key_mapping.items():
+                                                if mapped_name in coupon_name:
+                                                    total_history[coupon_key] = total_history.get(coupon_key, 0) + quantity
+                                                    self.logger.log_info(f"[C 매장] 매핑 성공: {mapped_name} -> {coupon_key} ({quantity}개)")
+                                                    break
+                                            else:
+                                                self.logger.log_warning(f"[C 매장] 매핑 실패: '{coupon_name}' - 알려진 쿠폰명과 일치하지 않음")
+                                                
+                                except Exception as row_e:
+                                    self.logger.log_warning(f"[C 매장] 행 처리 오류: {str(row_e)}")
+                                    continue
+                            break
+                                    
+                except Exception as direct_e:
+                    self.logger.log_warning(f"[C 매장] 직접 파싱 실패: {str(direct_e)}")
+            
+            self.logger.log_info(f"[C 매장] 파싱 완료 - total_history: {total_history}")
+                
+        except Exception as e:
+            self.logger.log_error(ErrorCode.FAIL_PARSE, "C매장할인내역", f"쿠폰 이력 파싱 실패: {str(e)}")
 
     async def cleanup(self) -> None:
         """리소스 정리"""

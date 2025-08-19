@@ -21,14 +21,8 @@ tests/
 # 전체 E2E 테스트
 pytest tests/e2e/test_store_e2e.py -v
 
-# 특정 매장만 테스트 (E2E)
-pytest "tests/e2e/test_store_e2e.py::test_store_end_to_end[D]" -v -s
-
-# 특정 매장만 테스트 (쿠폰 플로우)
+# 특정 매장만 테스트
 pytest "tests/e2e/test_store_e2e.py::test_store_coupon_flow[D]" -v -s
-
-# 모든 D 매장 테스트 실행
-pytest tests/e2e/test_store_e2e.py -k D -v -s
 
 # 단일 매장 직접 실행 (디버깅용)
 python tests/e2e/test_store_e2e.py

@@ -113,6 +113,8 @@ class AStoreCrawler(BaseCrawler, StoreRepository):
                 if await park_name_elem.count() > 0:
                     park_name_text = await park_name_elem.inner_text()
                     if '검색된 차량이 없습니다.' in park_name_text:
+                        # 텔레그램 알림 전송
+                        await self._send_no_vehicle_notification(vehicle.number)
                         self.logger.log_error(ErrorCode.NO_VEHICLE, "차량검색", f"차량번호 {vehicle.number} 검색 결과 없음")
                         return False
             except Exception:
@@ -121,6 +123,8 @@ class AStoreCrawler(BaseCrawler, StoreRepository):
             # 기존: 검색 결과 확인
             no_result = self.page.locator('text="검색된 차량이 없습니다"')
             if await no_result.count() > 0:
+                # 텔레그램 알림 전송
+                await self._send_no_vehicle_notification(vehicle.number)
                 self.logger.log_error(ErrorCode.NO_VEHICLE, "차량검색", f"차량번호 {vehicle.number} 검색 결과 없음")
                 return False
                 
@@ -201,29 +205,28 @@ class AStoreCrawler(BaseCrawler, StoreRepository):
                 if not my_dc_rows:
                     my_dc_rows = await self.page.locator('#myDcList tr').all()
                 
+                # 설정 파일에서 쿠폰 키 매핑 로드
+                coupon_key_mapping = self.store_config.selectors.get('coupons', {}).get('coupon_key_mapping', {})
+                
                 for row in my_dc_rows:
                     cells = await row.locator('td').all()
-                    # A매장 테이블 구조: [날짜, 할인권명, 수량]
-                    if len(cells) >= 3:
-                        # 할인권명은 1번째 셀 (인덱스 1)
-                        name = (await cells[1].inner_text()).strip()
-                        # 수량은 2번째 셀 (인덱스 2)
-                        count_text = (await cells[2].inner_text()).strip()
+                    
+                    # A매장 my_history 테이블 실제 구조: [할인권명, 수량, 취소버튼]
+                    if len(cells) >= 2:
+                        # 할인권명은 0번째 셀 (인덱스 0)
+                        name = (await cells[0].inner_text()).strip()
+                        # 수량은 1번째 셀 (인덱스 1)
+                        count_text = (await cells[1].inner_text()).strip()
                         m = re.search(r'(\d+)', count_text)
                         count = int(m.group(1)) if m else 0
                         
-                        # 실제 쿠폰명으로 직접 매핑
-                        if '30분할인권(무료)' in name:
-                            my_history['free_30min'] = count
-                        elif '1시간할인권(무료)' in name:
-                            my_history['free_1hour'] = count
-                        elif '1시간할인권(유료)' in name:
-                            my_history['paid_1hour'] = count
-                        elif '1시간주말할인권(유료)' in name:
-                            my_history['paid_1hour_weekend'] = count
-                        
-                        if self.logger.should_log_info():
-                            self.logger.log_info(f"[쿠폰파싱] 우리매장: {name} -> {count}개")
+                        # 설정 파일의 매핑을 사용
+                        for coupon_name, coupon_key in coupon_key_mapping.items():
+                            if coupon_name in name:
+                                my_history[coupon_key] = my_history.get(coupon_key, 0) + count
+                                if self.logger.should_log_info():
+                                    self.logger.log_info(f"[쿠폰파싱] 우리매장: {name} -> {coupon_key} = {count}개")
+                                break
             except Exception as e:
                 if self.logger.should_log_info():
                     self.logger.log_info(f"[쿠폰파싱] myDcList 파싱 오류: {str(e)}")
@@ -236,29 +239,27 @@ class AStoreCrawler(BaseCrawler, StoreRepository):
                 if not total_rows:
                     total_rows = await self.page.locator('#allDcList tr').all()
                 
+                # 쿠폰 키 매핑은 이미 위에서 로드됨
+                
                 for row in total_rows:
                     cells = await row.locator('td').all()
-                    # A매장 테이블 구조: [날짜, 할인권명, 수량]
-                    if len(cells) >= 3:
-                        # 할인권명은 1번째 셀 (인덱스 1)
-                        name = (await cells[1].inner_text()).strip()
-                        # 수량은 2번째 셀 (인덱스 2)
-                        count_text = (await cells[2].inner_text()).strip()
+                    
+                    # A매장 total_history 테이블 실제 구조: [할인권명, 수량]
+                    if len(cells) >= 2:
+                        # 할인권명은 0번째 셀 (인덱스 0)
+                        name = (await cells[0].inner_text()).strip()
+                        # 수량은 1번째 셀 (인덱스 1)
+                        count_text = (await cells[1].inner_text()).strip()
                         m = re.search(r'(\d+)', count_text)
                         count = int(m.group(1)) if m else 0
                         
-                        # 실제 쿠폰명으로 직접 매핑
-                        if '30분할인권(무료)' in name:
-                            total_history['free_30min'] = count
-                        elif '1시간할인권(무료)' in name:
-                            total_history['free_1hour'] = count
-                        elif '1시간할인권(유료)' in name:
-                            total_history['paid_1hour'] = count
-                        elif '1시간주말할인권(유료)' in name:
-                            total_history['paid_1hour_weekend'] = count
-                        
-                        if self.logger.should_log_info():
-                            self.logger.log_info(f"[쿠폰파싱] 전체: {name} -> {count}개")
+                        # 설정 파일의 매핑을 사용
+                        for coupon_name, coupon_key in coupon_key_mapping.items():
+                            if coupon_name in name:
+                                total_history[coupon_key] = total_history.get(coupon_key, 0) + count
+                                if self.logger.should_log_info():
+                                    self.logger.log_info(f"[쿠폰파싱] 전체: {name} -> {coupon_key} = {count}개")
+                                break
             except Exception as e:
                 if self.logger.should_log_info():
                     self.logger.log_info(f"[쿠폰파싱] allDcList 파싱 오류: {str(e)}")

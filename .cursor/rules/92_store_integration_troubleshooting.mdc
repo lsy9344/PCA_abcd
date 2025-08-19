@@ -1,0 +1,376 @@
+---
+title: "매장 통합 및 문제 해결 종합 가이드"
+order: 92
+category: "guide"
+alwaysApply: true
+tags: ["store-integration", "troubleshooting", "config", "parsing", "page-safety"]
+lastUpdated: "2025-08-19"
+description: "새 매장 추가 시 발생하는 공통 문제들과 체계적인 해결 방법"
+---
+
+# 매장 통합 및 문제 해결 종합 가이드
+
+## 🎯 목적
+
+새로운 매장을 시스템에 통합할 때 반복적으로 발생하는 문제들을 사전에 방지하고, 발생 시 빠르게 해결할 수 있는 체계적인 가이드를 제공합니다.
+
+---
+
+## 🚨 공통 문제 패턴 및 해결 전략
+
+### **1. 설정 로더 불일치 문제**
+
+#### **증상**
+```
+❌ AttributeError: 'StoreConfig' object has no attribute 'discount_types'
+❌ KeyError: 'coupon_key_mapping'
+```
+
+#### **원인**
+- 서로 다른 `StoreConfig` 클래스 사용
+- 로더 함수와 ConfigManager 혼용
+
+#### **해결 방법**
+```python
+# ❌ 잘못된 방식 - loader 함수 사용
+from infrastructure.config.loader import load_store_config
+store_config = load_store_config(store_id)  # discount_types 속성 없음
+
+# ✅ 올바른 방식 - ConfigManager 사용
+from infrastructure.config.config_manager import ConfigManager
+config_manager = ConfigManager()
+store_config = config_manager.get_store_config(store_id)  # 완전한 객체
+```
+
+#### **검증 방법**
+```python
+# 설정 객체 검증
+assert hasattr(store_config, 'discount_types')
+assert hasattr(store_config, 'selectors')
+assert 'coupon_key_mapping' in store_config.selectors.get('coupons', {})
+```
+
+---
+
+### **2. 테이블 구조 파싱 문제**
+
+#### **증상**
+```
+❌ 매핑 실패: '1회' - 알려진 쿠폰명과 일치하지 않음
+❌ 우리 매장 할인 내역 테이블을 찾을 수 없음
+❌ 빈 이력 반환: my_history: {}, total_history: {}
+```
+
+#### **원인**
+- 실제 HTML 구조와 예상 구조 불일치
+- 매장별 테이블 형식 차이 무시
+- 하드코딩된 셀 인덱스 사용
+
+#### **해결 전략**
+
+##### **STEP 1: HTML 구조 분석**
+```python
+# 디버깅 코드 추가하여 실제 구조 파악
+for idx, row in enumerate(rows):
+    cells = await row.locator('td').all()
+    print(f"행 {idx+1}: {len(cells)}개 셀")
+    
+    cell_contents = []
+    for i, cell in enumerate(cells):
+        content = (await cell.inner_text()).strip()
+        cell_contents.append(f"셀{i}: '{content}'")
+    print(f"셀 내용: {', '.join(cell_contents)}")
+```
+
+##### **STEP 2: 매장별 구조 패턴 정의**
+```python
+# 매장별 테이블 구조 정의
+STORE_TABLE_PATTERNS = {
+    'A': {
+        'my_history': {'coupon_name_cell': 0, 'quantity_cell': 1},
+        'total_history': {'coupon_name_cell': 0, 'quantity_cell': 1},
+        'selectors': ['#myDcList tr', '#allDcList tr']
+    },
+    'B': {
+        'my_history': {'coupon_name_cell': 1, 'quantity_cell': None},  # 항상 1개
+        'total_history': {'coupon_name_cell': 1, 'quantity_cell': None},
+        'selectors': ['tr.ev_dhx_skyblue', 'tr.odd_dhx_skyblue']
+    },
+    'C': {
+        'my_history': {'coupon_name_cell': 2, 'quantity_cell': 3},
+        'total_history': {'coupon_name_cell': 2, 'quantity_cell': 3},
+        'selectors': ["tbody[id='discountlist'] tr"]
+    }
+}
+```
+
+##### **STEP 3: 적응형 파싱 로직**
+```python
+def parse_coupon_row(cells, store_pattern, coupon_key_mapping):
+    """매장별 패턴에 맞는 쿠폰 행 파싱"""
+    if len(cells) <= store_pattern['coupon_name_cell']:
+        return None, 0
+    
+    # 쿠폰명 추출
+    name = (await cells[store_pattern['coupon_name_cell']].inner_text()).strip()
+    
+    # 수량 추출 (매장별 로직)
+    if store_pattern['quantity_cell'] is None:
+        quantity = 1  # B매장: 항상 1개
+    else:
+        quantity_text = (await cells[store_pattern['quantity_cell']].inner_text()).strip()
+        quantity_match = re.search(r'(\d+)', quantity_text)
+        quantity = int(quantity_match.group(1)) if quantity_match else 0
+    
+    # 쿠폰 키 매핑
+    for coupon_name, coupon_key in coupon_key_mapping.items():
+        if coupon_name in name:
+            return coupon_key, quantity
+    
+    return None, 0
+```
+
+---
+
+### **3. 페이지 안전성 문제**
+
+#### **증상**
+```
+❌ Locator.all: Target page, context or browser has been closed
+❌ 페이지 구조 분석 오류: Target page has been closed
+```
+
+#### **원인**
+- 페이지 상태 확인 없이 DOM 조작 시도
+- 브라우저 리소스 관리 미흡
+
+#### **해결 방법**
+
+##### **필수 안전성 검사 패턴**
+```python
+async def safe_parse_operation(self):
+    """모든 DOM 접근 전 필수 안전성 검사"""
+    try:
+        # 1. 페이지 닫힘 상태 확인
+        if self.page.is_closed():
+            self.logger.warning("페이지가 이미 닫혔습니다 - 파싱 불가")
+            return {}
+        
+        # 2. URL 접근 가능성 확인
+        try:
+            current_url = self.page.url
+            self.logger.info(f"현재 페이지 URL: {current_url}")
+        except Exception as e:
+            self.logger.warning(f"페이지 상태 확인 실패: {str(e)}")
+            return {}
+        
+        # 3. 실제 파싱 로직 수행
+        return await self._perform_parsing()
+        
+    except Exception as e:
+        self.logger.error(f"안전성 검사 실패: {str(e)}")
+        return {}
+```
+
+##### **브라우저 리소스 관리**
+```python
+async def cleanup(self):
+    """브라우저 리소스 정리"""
+    try:
+        if self.page and not self.page.is_closed():
+            await self.page.close()
+        if self.context:
+            await self.context.close()
+        if self.browser:
+            await self.browser.close()
+        if self.playwright_instance:
+            await self.playwright_instance.stop()
+    except Exception as e:
+        self.logger.warning(f"리소스 정리 중 오류: {str(e)}")
+```
+
+---
+
+### **4. 쿠폰 키 매핑 시스템**
+
+#### **원칙**
+- 각 매장의 실제 쿠폰명을 표준 키로 매핑
+- 설정 파일에서 중앙 관리
+- 하드코딩 금지
+
+#### **설정 파일 구조**
+```yaml
+# store_config.yaml
+selectors:
+  coupons:
+    coupon_key_mapping:
+      "30분할인권(무료)": "FREE_COUPON"
+      "1시간할인권(유료)": "PAID_COUPON"
+      "1시간주말할인권(유료)": "WEEKEND_COUPON"
+    
+    table_structure:
+      description: "매장별 테이블 구조 설명"
+      coupon_name_cell_index: 0
+      quantity_cell_index: 1
+      has_my_history: true
+```
+
+#### **매핑 로드 및 사용**
+```python
+# 설정에서 매핑 로드
+coupon_key_mapping = self.store_config.selectors.get('coupons', {}).get('coupon_key_mapping', {})
+
+# 매핑 적용
+for coupon_name, coupon_key in coupon_key_mapping.items():
+    if coupon_name in parsed_name:
+        history[coupon_key] = history.get(coupon_key, 0) + quantity
+        break
+```
+
+---
+
+## 📋 새 매장 추가 체크리스트
+
+### **🔍 사전 조사 단계**
+```bash
+□ 매장 웹사이트 구조 분석
+□ 로그인 플로우 확인
+□ 차량 검색 방식 파악
+□ 쿠폰 적용 UI 구조 분석
+□ 할인 내역 테이블 구조 분석
+```
+
+### **⚙️ 설정 파일 작성**
+```bash
+□ store_config.yaml 생성
+□ 로그인 정보 및 URL 설정
+□ 웹 셀렉터 정의
+□ 쿠폰 키 매핑 정의
+□ 테이블 구조 정보 추가
+```
+
+### **🏗️ 크롤러 구현**
+```bash
+□ BaseCrawler 상속 구조 사용
+□ 필수 메서드 구현 (login, search_vehicle, get_coupon_history, apply_coupons)
+□ 매장별 HTML 구조에 맞는 파싱 로직
+□ 페이지 안전성 검사 적용
+□ 적절한 예외 처리 및 로깅
+```
+
+### **🔗 어댑터 통합**
+```bash
+□ StoreAdapter 인터페이스 구현
+□ store_registry.py에 매장 등록
+□ ConfigManager 사용 확인
+□ 필수 속성 검증 (discount_types, selectors 등)
+```
+
+### **✅ 테스트 및 검증**
+```bash
+□ E2E 테스트 작성 및 실행
+□ 각 단계별 로깅 확인
+□ 쿠폰 파싱 정확성 검증
+□ 할인 계산기 연동 확인
+□ 에러 상황 테스트
+```
+
+---
+
+## 🏪 매장별 특성 비교표
+
+| 매장 | 테이블 식별 | 행 구조 | 쿠폰명 위치 | 수량 위치 | 특이사항 |
+|------|-------------|---------|-------------|-----------|----------|
+| **A** | ID 기반 (`#myDcList`) | `[쿠폰명, 수량, 버튼]` | cell[0] | cell[1] | my/total 구조 차이 |
+| **B** | 클래스 기반 (`tr.ev_dhx_skyblue`) | `[번호, 할인값, 등록자, 날짜]` | cell[1] | 항상 1개 | 클래스 기반 감지 |
+| **C** | ID 기반 (`tbody[id='discountlist']`) | `[번호, 날짜, 쿠폰명, 수량]` | cell[2] | cell[3] | 표준 구조 |
+| **D** | ID 기반 | `[날짜, 쿠폰명, 수량]` | cell[1] | cell[2] | 날짜 포함 |
+
+---
+
+## 🛠️ 문제 발생 시 디버깅 순서
+
+### **1단계: 설정 검증**
+```python
+# ConfigManager 사용 확인
+assert isinstance(store_config, StoreConfig)
+assert hasattr(store_config, 'discount_types')
+
+# 필수 설정 존재 확인
+assert store_config.selectors
+assert 'coupons' in store_config.selectors
+assert 'coupon_key_mapping' in store_config.selectors['coupons']
+```
+
+### **2단계: HTML 구조 분석**
+```python
+# 실제 테이블 구조 출력
+rows = await page.locator('table tr').all()
+for i, row in enumerate(rows[:3]):  # 처음 3개 행만
+    cells = await row.locator('td').all()
+    print(f"행 {i}: {[await cell.inner_text() for cell in cells]}")
+```
+
+### **3단계: 파싱 로직 검증**
+```python
+# 매핑 결과 확인
+print(f"쿠폰 키 매핑: {coupon_key_mapping}")
+print(f"파싱된 이력: my_history={my_history}, total_history={total_history}")
+
+# 변환 전후 비교
+print(f"원본 이력: {original_history}")
+print(f"변환 후 이력: {converted_history}")
+```
+
+### **4단계: E2E 연동 확인**
+```python
+# 할인 계산기 입력 검증
+print(f"계산기 입력 - 내 이력: {my_history_by_key}")
+print(f"계산기 입력 - 전체 이력: {total_history_by_key}")
+print(f"계산기 출력 - 필요 쿠폰: {required_coupons}")
+```
+
+---
+
+## 🚫 절대 하지 말 것
+
+### **❌ 피해야 할 패턴**
+- 매장별로 개별 파일 생성 (공통 로직 사용)
+- 하드코딩된 셀 인덱스 사용
+- 페이지 상태 확인 없는 DOM 접근
+- 서로 다른 StoreConfig 클래스 혼용
+- 설정 파일 없는 매장별 특수 로직
+
+### **✅ 권장 패턴**
+- ConfigManager를 통한 통일된 설정 로드
+- 매장별 패턴을 설정 파일에서 정의
+- 모든 DOM 접근 전 안전성 검사
+- 공통 인터페이스 및 추상 클래스 활용
+- 체계적인 로깅 및 디버깅 코드
+
+---
+
+## 📚 관련 문서
+
+### **핵심 참조 문서**
+- **기본 설계**: `04_base_store_design.mdc`
+- **에러 정책**: `30_error_policy.mdc`
+- **셀렉터 관리**: `20_selectors.mdc`
+- **테스트 가이드**: `90_testing_lessons.mdc`
+
+### **구현 참조 파일**
+- **설정 관리자**: `infrastructure/config/config_manager.py`
+- **어댑터 레지스트리**: `adapters/store_registry.py`
+- **베이스 크롤러**: `infrastructure/web_automation/base_crawler.py`
+- **E2E 테스트**: `tests/e2e/test_store_e2e.py`
+
+---
+
+## 💡 성공 사례 요약
+
+이 가이드를 통해 해결된 실제 문제들:
+- **A 매장**: ConfigManager 통합으로 `discount_types` 속성 오류 해결
+- **B 매장**: 페이지 안전성 검사로 DOM 접근 오류 해결
+- **C 매장**: 테이블 구조 분석으로 파싱 로직 정확성 확보
+
+각 매장의 고유한 특성을 존중하면서도 공통된 해결 패턴을 적용하여 안정적인 시스템 통합을 달성했습니다.

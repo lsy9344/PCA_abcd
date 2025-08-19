@@ -57,9 +57,10 @@ description: "프로젝트 문서 읽기 순서와 구조 가이드"
 | 순서 | 파일명 | 설명 | 참조 시점 |
 |------|--------|------|----------|
 | 14 | `50_special_conditions.mdc` | 특수 조건 및 예외 처리 | 특수 케이스 구현 시 |
-| 15 | `90_testing_lessons.mdc` | 매장 테스트 경험 및 문제 해결 | 새 매장 추가 시 |
+| 15 | `90_testing_lessons.mdc` | 매장 테스트 실무 가이드 | 테스트 수행 시 |
 | 16 | `91_server_caching.mdc` | 서버 캐싱 및 테스트 환경 관리 | 개발 환경 설정 시 |
-| 17 | `99_coding_standards.mdc` | 코딩 표준 및 권장 습관 | 코드 작성 시 |
+| 17 | `92_store_integration_troubleshooting.mdc` | 매장 통합 문제 해결 종합 가이드 | 매장 문제 발생 시 |
+| 18 | `99_coding_standards.mdc` | 코딩 표준 및 권장 습관 | 코드 작성 시 |
 
 ---
 
@@ -90,12 +91,14 @@ description: "프로젝트 문서 읽기 순서와 구조 가이드"
 
 ### **자주 찾는 정보**
 - **쿠폰 계산 로직**: `10_discount_logic.mdc` + `11_calculation_principles.mdc` + `15_current_implementation.mdc`
-- **새 매장 추가**: `04_base_store_design.mdc` + `90_testing_lessons.mdc`
-- **에러 해결**: `30_error_policy.mdc` + `91_server_caching.mdc`
+- **새 매장 추가**: `04_base_store_design.mdc` + `92_store_integration_troubleshooting.mdc`
+- **테스트 수행**: `90_testing_lessons.mdc`
+- **문제 해결**: `92_store_integration_troubleshooting.mdc` + `30_error_policy.mdc`
 - **셀렉터 관리**: `20_selectors.mdc`
 - **코딩 규칙**: `99_coding_standards.mdc`
 
 ### **문서 업데이트 이력**
+- 2025-08-19: 매장 통합 문제 해결 종합 가이드 추가, 테스트 실무 가이드 개선
 - 2024-08-15: 현재 구현 로직 문서 추가 (15_current_implementation.mdc)
 - 2024-01-15: 문서 구조 재정리 및 인덱스 생성
 - 기존: 개별 문서들의 점진적 업데이트

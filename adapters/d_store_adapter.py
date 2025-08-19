@@ -4,7 +4,7 @@ from typing import List
 from adapters.store_adapter import StoreAdapter
 from core.domain.models.vehicle import Vehicle
 from core.domain.models.coupon import CouponHistory, CouponApplication
-from reference.d_store_crawler import DStoreCrawler
+from infrastructure.web_automation.store_crawlers.d_store_crawler import DStoreCrawler
 
 
 class DStoreAdapter(StoreAdapter):
