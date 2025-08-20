@@ -204,15 +204,10 @@ def calculate_dynamic_coupons(
 ```python
 class BDiscountCalculator(DiscountCalculator):
     def calculate_required_coupons(self, **kwargs):
-        # 기본 계산 수행
-        base_result = super().calculate_required_coupons(**kwargs)
-        
-        # 30분 쿠폰 보정: 1시간 기준 → 30분 기준 변환
-        for coupon_key, count in base_result.items():
-            if coupon_key == 'PAID_30MIN':
-                base_result[coupon_key] = count * 2  # 2배 보정
-        
-        return base_result
+        # 기본 계산 수행 - 설정 파일의 duration_minutes로 자동 처리
+        # B매장의 30분 쿠폰은 duration_minutes: 30으로 설정되어 있어
+        # 동적 계산 알고리즘이 자동으로 올바른 개수를 계산함
+        return super().calculate_required_coupons(**kwargs)
 ```
 
 ### C 매장 (2시간 무료 쿠폰 특수 처리)

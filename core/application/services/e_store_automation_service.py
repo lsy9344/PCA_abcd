@@ -6,7 +6,7 @@ from typing import Dict, Any
 
 from ..dto.automation_dto import AutomationRequest, AutomationResponse, ErrorContext
 from infrastructure.web_automation.store_crawlers.e_store_crawler import EStoreCrawler
-from core.domain.models.e_discount_calculator import EDiscountCalculator
+from core.domain.models.discount_policy import DiscountCalculator
 from core.domain.models.vehicle import Vehicle
 from infrastructure.config.config_manager import ConfigManager
 from infrastructure.notifications.notification_service import NotificationService
@@ -29,10 +29,10 @@ class EStoreAutomationService:
         self._store_config = config_manager.get_store_config("E")
         self._playwright_config = config_manager.get_playwright_config()
         
-        # E 매장 전용 할인 계산기 생성
+        # E 매장 할인 계산기 생성 (기본 계산기 사용)
         discount_policy = config_manager.get_discount_policy("E")
         coupon_configs = config_manager.get_coupon_configs("E")
-        self._discount_calculator = EDiscountCalculator(discount_policy, coupon_configs)
+        self._discount_calculator = DiscountCalculator(discount_policy, coupon_configs)
         
         # E 매장 크롤러 생성
         self._crawler = EStoreCrawler(
