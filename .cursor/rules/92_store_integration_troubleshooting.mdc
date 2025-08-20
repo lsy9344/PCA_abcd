@@ -366,11 +366,122 @@ print(f"계산기 출력 - 필요 쿠폰: {required_coupons}")
 
 ---
 
+## 🎯 특별 케이스: C 매장 쿠폰 적용 구조 분석 및 해결
+
+### **문제 상황 (2025-08-21)**
+```
+❌ [C][쿠폰적용] FAIL_APPLY - 2시간 무료할인권 적용 실패
+❌ 쿠폰 목록을 찾을 수 없음
+❌ 적용 버튼을 찾을 수 없음
+```
+
+### **근본 원인 분석**
+
+#### **1차 오해: 할인 이력을 쿠폰 적용 대상으로 착각**
+```python
+# ❌ 잘못된 접근 - 할인 이력 테이블을 쿠폰 적용 대상으로 인식
+coupon_rows = await self.page.locator("table tr:has(td)").all()
+# 결과: "삭제 | 2025-08-21 02:17:39 | 1시간 유료할인권 | 1매"
+# → 이미 적용된 쿠폰의 삭제 버튼을 적용 버튼으로 오해
+```
+
+#### **2차 문제: 실제 HTML 구조 파악 부족**
+```html
+<!-- ❌ 착각한 구조: 할인 이력의 삭제 버튼 -->
+<a href="javascript:deldiscount('165312');" class="delete">삭제</a>
+
+<!-- ✅ 실제 쿠폰 적용 구조: insert_discount 함수 호출 -->  
+<a href="javascript:insert_discount(328304,246);" class="btn btn-active">1시간 무료할인권</a>
+<a href="javascript:insert_discount(328304,247);" class="btn btn-active">2시간 무료할인권</a>
+```
+
+### **문제 해결 과정**
+
+#### **STEP 1: 실제 HTML 구조 분석**
+- 스크린샷을 통해 실제 쿠폰 적용 링크 구조 파악
+- `insert_discount()` vs `deldiscount()` 함수 차이 명확히 구분
+- 적용 가능한 쿠폰과 할인 이력의 명확한 분리
+
+#### **STEP 2: 셀렉터 로직 완전 재구성**
+```python
+# ✅ 올바른 쿠폰 적용 링크 탐지
+async def _find_coupon_rows(self):
+    coupon_link_selectors = [
+        "a[href*='insert_discount']",      # 핵심: insert_discount 함수만 탐지
+        "a[onclick*='insert_discount']",   
+        "*[onclick*='insert_discount']",   
+    ]
+    
+    # 쿠폰 관련 텍스트가 포함된 링크들만 선택
+    if any(keyword in link_text for keyword in ['무료', '유료', '할인권', '쿠폰']):
+        coupon_info = {
+            'link': link,
+            'text': link_text, 
+            'href': link_href
+        }
+```
+
+#### **STEP 3: 무료 쿠폰 우선 적용 로직 구현**
+```python
+def _sort_coupons_by_priority(self, coupons: dict) -> list:
+    """무료 쿠폰 우선, 시간이 긴 것부터"""
+    def coupon_priority(item):
+        coupon_name = item[0]
+        if '무료' in coupon_name:
+            priority = 0
+            if '2시간' in coupon_name: priority -= 20  # 최우선
+            elif '1시간' in coupon_name: priority -= 10
+        else:
+            priority = 100  # 유료는 나중에
+        return priority
+    
+    return sorted(coupons.items(), key=coupon_priority)
+```
+
+### **최종 해결 결과**
+
+#### **쿠폰 이력 조회 성공**
+```
+✅ 🔍 현재 적용된 쿠폰 파싱 시작...
+✅ 📊 할인 내역 테이블 발견: 총 1개 행  
+✅ 📝 행 1: 삭제 | 2025-08-21 02:17:39 | 1시간 유료할인권 | 1매
+✅ 📋 보유 쿠폰: {'2시간 무료할인권': {'car': 100, 'total': 100}, '1시간 유료할인권': {'car': 100, 'total': 100}}
+✅ 📋 사용 이력: {'PAID_1HOUR': 1}
+```
+
+#### **쿠폰 적용 성공**  
+```
+✅ [디버그] 'a[href*='insert_discount']' 패턴으로 발견된 링크 수: 2
+✅ [디버그] 링크 1: '1시간 유료할인권' - href: javascript:insert_discount(328304,246);
+✅ [디버그] 링크 2: '2시간 무료할인권' - href: javascript:insert_discount(328304,247);
+✅ [우선순위] 쿠폰 적용 순서: ['2시간 무료할인권']  # 무료 쿠폰 우선
+✅ [성공] 2시간 무료할인권 링크 클릭 완료
+✅ [완료] C 쿠폰 적용 완료: 총 1개
+```
+
+### **핵심 교훈**
+
+1. **HTML 구조 정확한 파악 필수**: 실제 브라우저에서 확인된 구조와 코드의 가정 사이의 차이점 분석
+2. **JavaScript 함수 구분**: `insert_discount` (적용) vs `deldiscount` (삭제) 명확히 구분
+3. **우선순위 로직**: 무료 쿠폰 우선 적용 비즈니스 로직 준수
+4. **디버깅 강화**: 상세한 로깅으로 실제 발견되는 요소들을 모니터링
+
+### **재발 방지 체크리스트**
+```bash
+□ 실제 웹페이지에서 HTML 구조 스크린샷 확인
+□ JavaScript 함수 호출 패턴 정확히 파악  
+□ 할인 이력과 쿠폰 적용 UI 명확히 분리
+□ 비즈니스 규칙 (무료 우선) 코드에 반영
+□ 상세한 디버그 로깅으로 검증 가능하게 구현
+```
+
+---
+
 ## 💡 성공 사례 요약
 
 이 가이드를 통해 해결된 실제 문제들:
 - **A 매장**: ConfigManager 통합으로 `discount_types` 속성 오류 해결
-- **B 매장**: 페이지 안전성 검사로 DOM 접근 오류 해결
-- **C 매장**: 테이블 구조 분석으로 파싱 로직 정확성 확보
+- **B 매장**: 페이지 안전성 검사로 DOM 접근 오류 해결  
+- **C 매장**: HTML 구조 오해로 인한 쿠폰 적용 실패 → 실제 구조 분석 후 완전 해결 (2025-08-21)
 
 각 매장의 고유한 특성을 존중하면서도 공통된 해결 패턴을 적용하여 안정적인 시스템 통합을 달성했습니다.

@@ -58,33 +58,74 @@ selectors:
   
   # 쿠폰 관련
   coupons:
-    coupon_list: "#couponList"
-    coupon_rows: "#couponList tr"
-    apply_button: ".apply-btn"
-    discount_history: "#discountHistory"
+    # ⚠️ 주의: C 매장은 특수한 쿠폰 적용 구조를 가짐
+    # 실제 쿠폰 적용: insert_discount() JavaScript 함수 호출 링크
+    # 할인 이력 관리: tbody[id='discountlist'] 테이블
     
-    # 할인내역 테이블 셀렉터 (공통 쿠폰 계산기용)
-    # C 매장 특징: tbody ID 기반 식별
+    # 🎯 실제 쿠폰 적용 링크 셀렉터 (2025-08-21 확인됨)
+    coupon_application_selectors:
+      - "a[href*='insert_discount']"      # 핵심: insert_discount 함수 호출 링크만
+      - "a[onclick*='insert_discount']"   # onclick 속성에서도 확인
+      - "*[onclick*='insert_discount']"   # 모든 요소에서 onclick 확인
+    
+    # ❌ 혼동하지 말 것: 할인 이력 삭제 링크
+    discount_deletion_selectors:
+      - "a[href*='deldiscount']"          # 삭제 함수 (적용 X)
+      - "a.delete"                        # 삭제 버튼 클래스 (적용 X)
+    
+    # 📊 할인내역 테이블 셀렉터 (이력 조회용 - 적용 용도 아님)
+    # 2025-08-21 테스트 검증: tbody[id='discountlist'] 구조 확인됨
     discount_selectors:
-      - "tbody[id='discountlist'] tr"  # C 매장 할인내역 테이블
-      - "#discountlist tr"             # ID만으로 접근
-      - "tbody#discountlist tr"        # tbody 명시
+      - "tbody[id='discountlist'] tr"  # C 매장 할인내역 테이블 (메인)
+      - "#discountlist tr"             # ID만으로 접근 (백업)
+      - "tbody#discountlist tr"        # tbody 명시 (백업)
     
-    # 쿠폰 이름 → 키 매핑 (공통 쿠폰 계산기용)
+    # 🔍 할인 이력 파싱 규칙 (공통 쿠폰 계산기 연동)
+    history_parsing:
+      table_identification: "tbody[id='discountlist']"  # 고유 식별자
+      cell_structure:
+        0: "삭제_링크"     # <a href="javascript:deldiscount(...)">삭제</a>
+        1: "적용_날짜"     # "2025-08-21 02:17:39"
+        2: "쿠폰명"        # "1시간 유료할인권"  
+        3: "수량"         # "1매"
+      quantity_extraction: "r'(\\d+)'"  # 정규식: "1매" → 1
+      
+    # 📋 실제 테스트 결과 (2025-08-21)
+    verified_history_data:
+      example_row: "삭제 | 2025-08-21 02:17:39 | 1시간 유료할인권 | 1매"
+      parsed_result: {"PAID_1HOUR": 1}
+    
+    # 🎫 쿠폰 우선순위 적용 규칙 (2025-08-21 구현)
+    priority_rules:
+      description: "무료 쿠폰 우선, 시간이 긴 것부터"
+      order:
+        1: "2시간 무료할인권"  # 최우선
+        2: "1시간 무료할인권"
+        3: "2시간 유료할인권"  
+        4: "1시간 유료할인권"  # 최후순위
+    
+    # 🔗 실제 확인된 링크 구조 (2025-08-21 테스트됨)
+    verified_links:
+      "1시간 무료할인권": "javascript:insert_discount(328304,246);"
+      "2시간 무료할인권": "javascript:insert_discount(328304,247);"
+    
+    # 🗂️ 쿠폰 이름 → 키 매핑 (공통 쿠폰 계산기용)
     coupon_key_mapping:
       "2시간 무료할인권": "FREE_2HOUR"
       "무료 2시간할인": "FREE_2HOUR"
+      "1시간 무료할인권": "FREE_1HOUR"  # 추가됨
+      "무료 1시간할인": "FREE_1HOUR"    # 추가됨
       "1시간 유료할인권": "PAID_1HOUR"
       "유료할인권": "PAID_1HOUR"
       "유료할인": "PAID_1HOUR"
     
-    # C 매장 테이블 데이터 구조 정보
+    # 📋 C 매장 테이블 데이터 구조 정보 (할인 이력용)
     table_structure:
-      description: "빈값 | 날짜 | 할인권명 | 수량"
+      description: "삭제링크 | 날짜 | 할인권명 | 수량"
       coupon_name_cell_index: 2  # 쿠폰명이 있는 셀 인덱스 (0부터 시작)
       quantity_cell_index: 3     # 수량이 있는 셀 인덱스
       has_my_history: false      # C 매장은 my_history가 없음 (total_history만)
-      example: " | 2025-08-16 | 2시간 무료할인권 | 1매"
+      example: "삭제 | 2025-08-21 02:17:39 | 1시간 유료할인권 | 1매"
     
   # 페이지 URL (추정)
   urls:

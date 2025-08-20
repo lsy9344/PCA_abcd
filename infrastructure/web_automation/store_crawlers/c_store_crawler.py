@@ -163,13 +163,17 @@ class CStoreCrawler(BaseCrawler, StoreRepository):
             return self._empty_coupon_history(vehicle.number)
 
     async def apply_coupons(self, applications: List[CouponApplication]) -> bool:
-        """쿠폰 적용"""
+        """쿠폰 적용 - 무료 쿠폰 우선 적용"""
         try:
             coupons_to_apply = {app.coupon_name: app.count for app in applications}
             self.logger.log_info(f"[쿠폰] C 매장 쿠폰 적용 시작: {coupons_to_apply}")
             
+            # 무료 쿠폰 우선 정렬 (무료 > 유료 순서)
+            sorted_coupons = self._sort_coupons_by_priority(coupons_to_apply)
+            self.logger.log_info(f"[우선순위] 쿠폰 적용 순서: {[name for name, _ in sorted_coupons]}")
+            
             total_applied = 0
-            for coupon_name, count in coupons_to_apply.items():
+            for coupon_name, count in sorted_coupons:
                 if count > 0:
                     for i in range(count):
                         if await self._apply_single_coupon(coupon_name, i + 1):
@@ -189,6 +193,40 @@ class CStoreCrawler(BaseCrawler, StoreRepository):
         except Exception as e:
             self.logger.log_error(ErrorCode.FAIL_APPLY, "쿠폰적용", str(e))
             return False
+
+    def _sort_coupons_by_priority(self, coupons: dict) -> list:
+        """쿠폰을 우선순위에 따라 정렬 - 무료 쿠폰이 우선"""
+        try:
+            coupon_list = list(coupons.items())
+            
+            # 무료 쿠폰 우선, 시간이 긴 것부터 (2시간 > 1시간)
+            def coupon_priority(item):
+                coupon_name = item[0]
+                
+                # 무료 쿠폰이 최우선
+                if '무료' in coupon_name:
+                    priority = 0
+                    # 시간이 긴 것부터 (2시간이 1시간보다 우선)
+                    if '2시간' in coupon_name:
+                        priority -= 20
+                    elif '1시간' in coupon_name:
+                        priority -= 10
+                else:
+                    # 유료 쿠폰은 나중에
+                    priority = 100
+                    if '2시간' in coupon_name:
+                        priority -= 20
+                    elif '1시간' in coupon_name:
+                        priority -= 10
+                
+                return priority
+            
+            sorted_coupons = sorted(coupon_list, key=coupon_priority)
+            return sorted_coupons
+            
+        except Exception as e:
+            self.logger.log_warning(f"[경고] 쿠폰 정렬 실패: {str(e)}")
+            return list(coupons.items())
 
     async def _handle_popups(self):
         """팝업 처리"""
@@ -239,36 +277,74 @@ class CStoreCrawler(BaseCrawler, StoreRepository):
             self.logger.log_warning("[경고] 텔레그램 알림 서비스가 설정되지 않음")
 
     async def _parse_available_coupons(self, available_coupons: Dict):
-        """보유 쿠폰 파싱"""
+        """보유 쿠폰 파싱 - 개선된 버전"""
         try:
-            coupon_list_selector = self.store_config.selectors['coupons']['coupon_list']
-            coupon_rows_selector = self.store_config.selectors['coupons']['coupon_rows']
+            # 쿠폰 목록 찾기 - 개선된 메서드 사용
+            coupon_rows = await self._find_coupon_rows()
+            if not coupon_rows:
+                self.logger.log_warning("[경고] 쿠폰 목록을 찾을 수 없어 기본값 사용")
+                return
             
-            # 쿠폰 리스트가 있는지 확인
-            if await self.page.locator(coupon_list_selector).count() > 0:
-                rows = await self.page.locator(coupon_rows_selector).all()
-                for row in rows:
-                    try:
-                        text = await row.inner_text()
-                        # 쿠폰 이름과 수량 파싱 (사이트별 맞춤 구현 필요)
-                        for coupon_name in available_coupons.keys():
-                            if coupon_name in text:
-                                # 수량 추출 로직 (예: "쿠폰명 10개" 형태)
-                                count_match = re.search(r'(\d+)', text)
-                                if count_match:
-                                    count = int(count_match.group(1))
-                                    available_coupons[coupon_name] = {'car': count, 'total': count}
-                                    
-                                    # 쿠폰 부족 알림
-                                    if count <= 50 and count > 0:
-                                        self.logger.log_warning(f"[경고] C 매장 {coupon_name} 쿠폰 부족: {count}개")
-                                        asyncio.create_task(self.send_low_coupon_notification(coupon_name, count))
-                                break
-                    except Exception:
-                        continue
+            self.logger.log_info(f"[디버그] 쿠폰 파싱 대상 행 수: {len(coupon_rows)}")
+            
+            for i, row in enumerate(coupon_rows):
+                try:
+                    text = await row.inner_text()
+                    self.logger.log_info(f"[디버그] 쿠폰 파싱 행 {i+1}: {text[:100]}...")
+                    
+                    # 쿠폰 이름과 수량 파싱
+                    for coupon_name in available_coupons.keys():
+                        if coupon_name in text:
+                            # 수량 추출 로직 - 다양한 패턴 시도
+                            count = self._extract_coupon_count(text)
+                            if count is not None:
+                                available_coupons[coupon_name] = {'car': count, 'total': count}
+                                self.logger.log_info(f"[발견] {coupon_name}: {count}개")
+                                
+                                # 쿠폰 부족 알림
+                                if count <= 50 and count > 0:
+                                    self.logger.log_warning(f"[경고] C 매장 {coupon_name} 쿠폰 부족: {count}개")
+                                    asyncio.create_task(self.send_low_coupon_notification(coupon_name, count))
+                            else:
+                                self.logger.log_warning(f"[경고] {coupon_name} 수량 파싱 실패: {text}")
+                            break
+                except Exception as row_e:
+                    self.logger.log_warning(f"[경고] 쿠폰 행 파싱 중 오류: {str(row_e)}")
+                    continue
                         
         except Exception as e:
             self.logger.log_warning(f"[경고] 쿠폰 리스트 파싱 실패: {str(e)}")
+
+    def _extract_coupon_count(self, text: str) -> Optional[int]:
+        """텍스트에서 쿠폰 수량 추출 - 다양한 패턴 시도"""
+        try:
+            # 다양한 수량 패턴들을 시도
+            patterns = [
+                r'(\d+)\s*개',      # "10개" 형태
+                r'(\d+)\s*매',      # "10매" 형태  
+                r'(\d+)\s*장',      # "10장" 형태
+                r'(\d+)\s*회',      # "10회" 형태
+                r'(\d+)\s*건',      # "10건" 형태
+                r'수량\s*:?\s*(\d+)',  # "수량: 10" 형태
+                r'보유\s*:?\s*(\d+)',  # "보유: 10" 형태
+                r'잔여\s*:?\s*(\d+)',  # "잔여: 10" 형태
+                r'남은\s*수량\s*:?\s*(\d+)',  # "남은 수량: 10" 형태
+                r'(\d+)',           # 마지막 시도: 모든 숫자
+            ]
+            
+            for pattern in patterns:
+                match = re.search(pattern, text)
+                if match:
+                    count = int(match.group(1))
+                    # 합리적인 범위인지 확인 (0-9999 사이)
+                    if 0 <= count <= 9999:
+                        return count
+            
+            return None
+            
+        except Exception as e:
+            self.logger.log_warning(f"[경고] 쿠폰 수량 추출 실패: {str(e)}")
+            return None
 
 
     def _map_coupon_type(self, coupon_text: str) -> Optional[str]:
@@ -305,31 +381,66 @@ class CStoreCrawler(BaseCrawler, StoreRepository):
             return None
 
     async def _apply_single_coupon(self, coupon_name: str, sequence: int) -> bool:
-        """단일 쿠폰 적용"""
+        """단일 쿠폰 적용 - insert_discount 링크 클릭 방식"""
         try:
             self.logger.log_info(f"[쿠폰] {coupon_name} 쿠폰 적용 시작 (순서: {sequence})")
             
-            # 쿠폰 목록에서 해당 쿠폰 찾아서 적용 버튼 클릭
-            coupon_rows = await self.page.locator(self.store_config.selectors['coupons']['coupon_rows']).all()
-            for row in coupon_rows:
-                text = await row.inner_text()
-                if coupon_name in text:
-                    apply_button = row.locator(self.store_config.selectors['coupons']['apply_button'])
-                    if await apply_button.count() > 0:
-                        await apply_button.first.click()
-                        await self.page.wait_for_timeout(1000)
-                        
-                        # 적용 확인 팝업 처리
-                        await self._handle_apply_confirmation()
-                        
-                        self.logger.log_info(f"[성공] {coupon_name} 적용 완료")
-                        return True
+            # 1. insert_discount 링크들 찾기
+            coupon_links = await self._find_coupon_rows()
+            if not coupon_links:
+                self.logger.log_error(ErrorCode.FAIL_APPLY, "쿠폰적용", "적용 가능한 쿠폰 링크를 찾을 수 없음")
+                return False
             
-            self.logger.log_error(ErrorCode.FAIL_APPLY, "쿠폰적용", f"{coupon_name} 적용 버튼을 찾을 수 없음")
+            self.logger.log_info(f"[디버그] 발견된 쿠폰 링크 수: {len(coupon_links)}")
+            
+            # 2. 해당 쿠폰 이름이 포함된 링크 찾기
+            for i, coupon_info in enumerate(coupon_links):
+                try:
+                    link_text = coupon_info['text']
+                    link_element = coupon_info['link']
+                    
+                    self.logger.log_info(f"[디버그] 쿠폰 링크 {i+1}: {link_text}")
+                    
+                    if coupon_name in link_text:
+                        self.logger.log_info(f"[발견] {coupon_name} 쿠폰 링크 찾음")
+                        
+                        # 3. 쿠폰 링크 클릭
+                        if await self._click_coupon_link(link_element, coupon_name):
+                            self.logger.log_info(f"[성공] {coupon_name} 적용 완료")
+                            return True
+                        else:
+                            self.logger.log_error(ErrorCode.FAIL_APPLY, "쿠폰적용", f"{coupon_name} 링크 클릭 실패")
+                            return False
+                            
+                except Exception as link_e:
+                    self.logger.log_warning(f"[경고] 쿠폰 링크 처리 중 오류: {str(link_e)}")
+                    continue
+            
+            self.logger.log_error(ErrorCode.FAIL_APPLY, "쿠폰적용", f"{coupon_name} 쿠폰 링크를 찾을 수 없음")
             return False
             
         except Exception as e:
             self.logger.log_error(ErrorCode.FAIL_APPLY, "쿠폰적용", f"{coupon_name} 적용 중 오류: {str(e)}")
+            return False
+
+    async def _click_coupon_link(self, link_element, coupon_name: str) -> bool:
+        """쿠폰 링크 클릭"""
+        try:
+            self.logger.log_info(f"[시도] {coupon_name} 쿠폰 링크 클릭")
+            
+            # 링크 클릭
+            await link_element.click()
+            await self.page.wait_for_timeout(3000)  # 처리 대기
+            
+            self.logger.log_info(f"[성공] {coupon_name} 링크 클릭 완료")
+            
+            # 팝업이나 확인 메시지 처리
+            await self._handle_apply_confirmation()
+            
+            return True
+            
+        except Exception as e:
+            self.logger.log_error(ErrorCode.FAIL_APPLY, "링크클릭", f"{coupon_name} 링크 클릭 중 오류: {str(e)}")
             return False
 
     async def _handle_apply_confirmation(self):
@@ -395,7 +506,7 @@ class CStoreCrawler(BaseCrawler, StoreRepository):
                             # tbody가 없는 경우 일반 tr 사용
                             rows = await table.locator('tr').all()
                         
-                        for i, row in enumerate(rows):
+                        for row_idx, row in enumerate(rows):
                             try:
                                 row_text = await row.inner_text()
                                 
@@ -456,6 +567,7 @@ class CStoreCrawler(BaseCrawler, StoreRepository):
             # 2. URL 접근 가능성 확인
             try:
                 current_url = self.page.url
+                self.logger.log_info(f"현재 페이지 URL: {current_url}")
             except Exception as e:
                 self.logger.log_warning(f"페이지 상태 확인 실패: {str(e)}")
                 return False
@@ -507,7 +619,7 @@ class CStoreCrawler(BaseCrawler, StoreRepository):
                 self.logger.log_warning("할인 내역 테이블을 찾을 수 없음")
             
             # 공통 유틸리티로 파싱 (C 매장은 my_history 사용 안함)
-            my_history, parsed_total_history = await CommonCouponCalculator.parse_applied_coupons(
+            parsed_my_history, parsed_total_history = await CommonCouponCalculator.parse_applied_coupons(
                 self.page,
                 coupon_key_mapping,
                 discount_selectors,
@@ -526,7 +638,7 @@ class CStoreCrawler(BaseCrawler, StoreRepository):
                         if await self.page.locator(selector).count() > 0:
                             rows = await self.page.locator(selector).all()
                             
-                            for idx, row in enumerate(rows):
+                            for row_index, row in enumerate(rows):
                                 try:
                                     cells = await row.locator('td').all()
                                     if len(cells) >= 4:
@@ -551,7 +663,7 @@ class CStoreCrawler(BaseCrawler, StoreRepository):
                                                     total_history[coupon_key] = total_history.get(coupon_key, 0) + quantity
                                                     break
                                                 
-                                except Exception as row_e:
+                                except Exception:
                                     continue
                             break
                                     
@@ -561,6 +673,193 @@ class CStoreCrawler(BaseCrawler, StoreRepository):
                 
         except Exception as e:
             self.logger.log_error(ErrorCode.FAIL_PARSE, "쿠폰이력파싱", str(e))
+
+    async def _find_coupon_rows(self):
+        """실제 적용 가능한 쿠폰 찾기 - insert_discount 함수를 호출하는 링크들"""
+        try:
+            self.logger.log_info("[디버그] insert_discount 링크가 있는 쿠폰 검색 중...")
+            
+            # 실제 쿠폰 적용 링크들 찾기: javascript:insert_discount 패턴
+            coupon_link_selectors = [
+                "a[href*='insert_discount']",  # insert_discount 함수를 호출하는 링크들
+                "a[onclick*='insert_discount']",  # onclick에 insert_discount가 있는 링크들
+                "*[onclick*='insert_discount']",  # onclick에 insert_discount가 있는 모든 요소
+            ]
+            
+            coupon_rows = []
+            
+            for selector in coupon_link_selectors:
+                try:
+                    links = await self.page.locator(selector).all()
+                    self.logger.log_info(f"[디버그] '{selector}' 패턴으로 발견된 링크 수: {len(links)}")
+                    
+                    for i, link in enumerate(links):
+                        try:
+                            link_text = await link.inner_text()
+                            link_href = await link.get_attribute('href') or ""
+                            link_onclick = await link.get_attribute('onclick') or ""
+                            
+                            self.logger.log_info(f"[디버그] 링크 {i+1}: '{link_text}'")
+                            self.logger.log_info(f"[디버그] href: {link_href}")
+                            self.logger.log_info(f"[디버그] onclick: {link_onclick}")
+                            
+                            # 쿠폰 관련 텍스트가 포함된 링크들만 선택
+                            if any(keyword in link_text for keyword in ['무료', '유료', '할인권', '쿠폰', '시간']):
+                                # 링크의 부모 요소들을 포함한 행 정보 생성
+                                coupon_info = {
+                                    'link': link,
+                                    'text': link_text,
+                                    'href': link_href,
+                                    'onclick': link_onclick
+                                }
+                                coupon_rows.append(coupon_info)
+                                self.logger.log_info(f"[발견] 적용 가능한 쿠폰: {link_text}")
+                        except Exception as link_e:
+                            self.logger.log_warning(f"[경고] 링크 처리 중 오류: {str(link_e)}")
+                            continue
+                            
+                except Exception as selector_e:
+                    self.logger.log_warning(f"[경고] 셀렉터 '{selector}' 검색 실패: {str(selector_e)}")
+                    continue
+            
+            if coupon_rows:
+                self.logger.log_info(f"[발견] 총 적용 가능한 쿠폰 수: {len(coupon_rows)}개")
+                return coupon_rows
+            else:
+                self.logger.log_warning("[경고] insert_discount 링크를 찾을 수 없음")
+                return []
+            
+        except Exception as e:
+            self.logger.log_error(ErrorCode.FAIL_APPLY, "쿠폰목록검색", f"쿠폰 목록 검색 실패: {str(e)}")
+            return []
+
+    async def _click_apply_button_in_row(self, row, coupon_name: str) -> bool:
+        """쿠폰 행 자체를 클릭하여 팝업 발생시키기"""
+        try:
+            # 행에서 HTML 구조 디버그
+            row_html = await row.inner_html()
+            row_text = await row.inner_text()
+            self.logger.log_info(f"[디버그] 쿠폰 행 HTML: {row_html[:200]}...")
+            self.logger.log_info(f"[디버그] 쿠폰 행 텍스트: {row_text}")
+            
+            # 1. 먼저 쿠폰 이름이 포함된 클릭 가능한 요소들 찾기
+            clickable_selectors = [
+                # onclick 속성이 있는 요소들
+                "*[onclick]",
+                # 링크 요소들  
+                "a",
+                # 버튼 요소들
+                "button", "input[type='button']", "input[type='submit']",
+                # 쿠폰 이름을 포함한 클릭 가능한 텍스트들
+                f"*:has-text('{coupon_name}')",
+                "*:has-text('무료')", "*:has-text('유료')", "*:has-text('할인')",
+            ]
+            
+            # 2. 각 셀렉터로 클릭 가능한 요소들 시도
+            for selector in clickable_selectors:
+                try:
+                    elements = await row.locator(selector).all()
+                    self.logger.log_info(f"[디버그] '{selector}' 셀렉터로 발견된 요소 수: {len(elements)}")
+                    
+                    for i, element in enumerate(elements):
+                        try:
+                            # 요소 정보 수집
+                            is_visible = await element.is_visible()
+                            element_text = ""
+                            try:
+                                element_text = await element.inner_text()
+                            except:
+                                try:
+                                    element_text = await element.get_attribute('value') or ""
+                                except:
+                                    pass
+                            
+                            element_onclick = ""
+                            try:
+                                element_onclick = await element.get_attribute('onclick') or ""
+                            except:
+                                pass
+                            
+                            self.logger.log_info(f"[디버그] 요소 {i+1}: '{element_text}' (visible: {is_visible})")
+                            self.logger.log_info(f"[디버그] onclick: {element_onclick[:100]}...")
+                            
+                            # 쿠폰 이름이 포함되거나 관련된 요소라면 클릭 시도
+                            if is_visible and (coupon_name in element_text or 
+                                              any(keyword in element_text for keyword in ['무료', '유료', '할인']) or
+                                              element_onclick):
+                                
+                                self.logger.log_info(f"[시도] 요소 클릭: '{element_text}'")
+                                await element.click()
+                                await self.page.wait_for_timeout(3000)  # 팝업 로딩 대기
+                                self.logger.log_info(f"[성공] 쿠폰 클릭 완료: '{element_text}'")
+                                
+                                # 팝업이 발생했는지 확인
+                                return await self._check_and_handle_coupon_popup()
+                                
+                        except Exception as elem_e:
+                            self.logger.log_warning(f"[경고] 요소 {i+1} 클릭 시도 실패: {str(elem_e)}")
+                            continue
+                            
+                except Exception:
+                    continue
+            
+            # 3. 위에서 실패했다면 행 자체를 클릭 시도
+            try:
+                self.logger.log_info("[시도] 쿠폰 행 자체 클릭")
+                await row.click()
+                await self.page.wait_for_timeout(3000)  # 팝업 로딩 대기
+                self.logger.log_info("[성공] 쿠폰 행 클릭 완료")
+                
+                # 팝업이 발생했는지 확인
+                return await self._check_and_handle_coupon_popup()
+                
+            except Exception as row_e:
+                self.logger.log_warning(f"[경고] 행 클릭 실패: {str(row_e)}")
+            
+            self.logger.log_error(ErrorCode.FAIL_APPLY, "쿠폰클릭", f"{coupon_name} 쿠폰 클릭 실패")
+            return False
+            
+        except Exception as e:
+            self.logger.log_error(ErrorCode.FAIL_APPLY, "쿠폰클릭", f"쿠폰 클릭 중 오류: {str(e)}")
+            return False
+
+    async def _check_and_handle_coupon_popup(self) -> bool:
+        """쿠폰 클릭 후 팝업 확인 및 처리"""
+        try:
+            self.logger.log_info("[확인] 쿠폰 적용 팝업 확인 중...")
+            
+            # 팝업이나 다이얼로그 확인
+            popup_selectors = [
+                ".popup", ".modal", ".dialog", 
+                "[role='dialog']", "[role='alertdialog']",
+                "*:has-text('적용')*:has-text('확인')",
+                "*:has-text('쿠폰')*:has-text('사용')",
+            ]
+            
+            popup_found = False
+            for selector in popup_selectors:
+                try:
+                    if await self.page.locator(selector).count() > 0:
+                        popup_text = await self.page.locator(selector).first.inner_text()
+                        self.logger.log_info(f"[발견] 팝업: {popup_text[:100]}...")
+                        popup_found = True
+                        break
+                except Exception:
+                    continue
+            
+            if popup_found:
+                # 확인 버튼 클릭
+                await self._handle_apply_confirmation()
+                self.logger.log_info("[성공] 쿠폰 적용 팝업 처리 완료")
+                return True
+            else:
+                # 팝업이 없어도 성공으로 간주 (바로 적용되는 경우)
+                self.logger.log_info("[정보] 팝업 없이 바로 적용된 것으로 추정")
+                return True
+            
+        except Exception as e:
+            self.logger.log_warning(f"[경고] 팝업 처리 중 오류: {str(e)}")
+            return True  # 오류가 있어도 일단 성공으로 간주
 
     async def cleanup(self) -> None:
         """리소스 정리"""

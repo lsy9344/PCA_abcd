@@ -175,41 +175,184 @@ elif any(name in cell_texts[2] for name in ["무료", "유료", "할인권"]):
 
 ---
 
-## C 매장 쿠폰 링크 판별 규칙
+## C 매장 쿠폰 적용 구조 상세 분석
 
-### 🎯 C 매장 쿠폰 링크 특징
-C 매장에서는 실제 쿠폰 적용 링크와 할인 내역 조회 링크를 명확히 구분해야 합니다.
+### 🎯 C 매장 HTML 구조의 핵심 특징
+C 매장은 다른 매장들과 완전히 다른 쿠폰 적용 메커니즘을 사용합니다.
 
-#### ✅ 실제 쿠폰 적용 링크 (적용해야 하는 링크)
-- **패턴**: `href="javascript:insert_discount(매개변수1,매개변수2)"`
-- **예시**: 
-  - `javascript:insert_discount(328304,246)` → "1시간 유료할인권"
-  - `javascript:insert_discount(328304,247)` → "2시간 무료할인권"
-- **판별 조건**: `href.startswith('javascript:insert_discount')`
+#### 🔍 실제 HTML 구조 분석 결과
+```html
+<!-- ✅ 실제 쿠폰 적용 링크들 -->
+<a href="javascript:insert_discount(328304,246);" class="btn btn-active">1시간 무료할인권</a>
+<a href="javascript:insert_discount(328304,247);" class="btn btn-active">2시간 무료할인권</a>
 
-#### ❌ 할인 내역 조회 링크 (제외해야 하는 링크)
-- **패턴**: `href="./discountlist"` 또는 기타 페이지 이동 링크
-- **예시**: `./discountlist` → "할인등록현황" (관리 페이지)
-- **판별 조건**: JavaScript 함수가 아닌 일반 페이지 링크
-
-#### 🔧 올바른 쿠폰 링크 판별 코드
-```python
-# ✅ 올바른 C 매장 쿠폰 링크 판별
-if href and href.startswith('javascript:insert_discount'):
-    coupon_links.append((text.strip(), href))
-
-# ❌ 잘못된 판별 (너무 포괄적)
-if href and 'discount' in href.lower():
-    coupon_links.append((text.strip(), href))  # 할인등록현황도 포함됨
+<!-- ❌ 할인 이력 삭제 링크 (혼동 주의!) -->
+<a href="javascript:deldiscount('165312');" class="delete">삭제</a>
 ```
 
-### 📋 C 매장 셀렉터 요약
+#### 🚨 중요한 구분 사항
+1. **적용 가능한 쿠폰**: `insert_discount()` 함수를 호출하는 링크들
+2. **할인 이력**: `deldiscount()` 함수를 호출하는 삭제 링크들 (혼동하면 안됨!)
+3. **이력 조회**: `./discountlist` 등 페이지 이동 링크들
 
-| 기능 | 셀렉터 | 설명 |
-|------|--------|------|
-| 실제 쿠폰 적용 | `a[href^="javascript:insert_discount"]` | JavaScript 함수 호출 링크만 선택 |
-| 할인 내역 조회 | `a[href="./discountlist"]` | 페이지 이동 링크 (제외) |
-| 쿠폰 삭제 | `a[href^="javascript:deldiscount"]` | 삭제 함수 (필요시) |
+### 🔧 C 매장 쿠폰 탐지 로직
+
+#### ✅ 올바른 쿠폰 링크 탐지 셀렉터
+```python
+# 실제 적용 가능한 쿠폰만 탐지
+coupon_link_selectors = [
+    "a[href*='insert_discount']",     # insert_discount 함수를 호출하는 링크들
+    "a[onclick*='insert_discount']",  # onclick에 insert_discount가 있는 링크들  
+    "*[onclick*='insert_discount']",  # onclick에 insert_discount가 있는 모든 요소
+]
+```
+
+#### ❌ 잘못된 탐지 방법들 (피해야 할 패턴)
+```python
+# ❌ 너무 포괄적 - 할인 이력도 포함됨
+"a:has-text('할인')"
+"*:has-text('쿠폰')"
+"table tr:has(td)"
+
+# ❌ 삭제 버튼과 혼동
+"a:has-text('삭제')"
+"a[href*='deldiscount']"
+```
+
+### 📋 C 매장 완전 셀렉터 가이드
+
+| 목적 | 올바른 셀렉터 | 잘못된 셀렉터 | 비고 |
+|------|---------------|---------------|------|
+| **쿠폰 적용** | `a[href*='insert_discount']` | `a:has-text('할인')` | insert_discount만 탐지 |
+| **할인 이력** | `tbody[id='discountlist'] tr` | `table tr:has(td)` | 특정 테이블만 |
+| **이력 삭제** | `a[href*='deldiscount']` | `a:has-text('삭제')` | 삭제 함수 호출 링크 |
+
+### 🎯 쿠폰 우선순위 적용 규칙
+
+#### 무료 쿠폰 우선 적용 로직
+```python
+def _sort_coupons_by_priority(self, coupons: dict) -> list:
+    """C 매장 쿠폰 우선순위: 무료 → 유료, 긴시간 → 짧은시간"""
+    def coupon_priority(item):
+        coupon_name = item[0]
+        
+        # 무료 쿠폰이 최우선
+        if '무료' in coupon_name:
+            priority = 0
+            if '2시간' in coupon_name: priority -= 20  # 2시간 무료 최우선
+            elif '1시간' in coupon_name: priority -= 10
+        else:
+            # 유료 쿠폰은 나중에
+            priority = 100
+            if '2시간' in coupon_name: priority -= 20
+            elif '1시간' in coupon_name: priority -= 10
+        
+        return priority
+    
+    return sorted(coupons.items(), key=coupon_priority)
+```
+
+### 🔍 실제 크롤링 구현 코드
+```python
+async def _find_coupon_rows(self):
+    """C 매장 전용: insert_discount 링크 탐지"""
+    coupon_link_selectors = [
+        "a[href*='insert_discount']",
+        "a[onclick*='insert_discount']", 
+        "*[onclick*='insert_discount']",
+    ]
+    
+    for selector in coupon_link_selectors:
+        links = await self.page.locator(selector).all()
+        for link in links:
+            link_text = await link.inner_text()
+            link_href = await link.get_attribute('href') or ""
+            
+            # 쿠폰 관련 텍스트가 포함된 링크들만 선택
+            if any(keyword in link_text for keyword in ['무료', '유료', '할인권', '쿠폰']):
+                coupon_info = {
+                    'link': link,
+                    'text': link_text, 
+                    'href': link_href
+                }
+                coupon_rows.append(coupon_info)
+```
+
+### 🚨 C 매장 크롤링 시 주의사항
+
+1. **할인 이력과 혼동 금지**: `tbody[id='discountlist']`의 삭제 버튼은 이미 적용된 쿠폰의 삭제 버튼임
+2. **JavaScript 함수 구분**: `insert_discount` (적용) vs `deldiscount` (삭제) 명확히 구분
+3. **무료 쿠폰 우선**: 항상 무료 쿠폰부터 적용하고, 시간이 긴 것을 우선
+4. **링크 클릭 방식**: 버튼이 아닌 JavaScript 함수를 호출하는 링크 클릭
+
+### 📊 C 매장 할인 이력 조회 구조
+
+#### 🗂️ 할인 이력 테이블 특징
+- **테이블 식별**: `tbody[id='discountlist']` (고유 ID 기반)
+- **데이터 구조**: `삭제링크 | 날짜 | 할인권명 | 수량`
+- **실제 예시**: `삭제 | 2025-08-21 02:17:39 | 1시간 유료할인권 | 1매`
+
+#### 🔍 이력 조회 셀렉터
+```python
+# C 매장 할인 이력 조회 전용 셀렉터
+discount_history_selectors = [
+    "tbody[id='discountlist'] tr",  # 메인 셀렉터
+    "#discountlist tr",             # 백업 셀렉터
+    "tbody#discountlist tr",        # 명시적 셀렉터
+]
+```
+
+#### 📋 이력 파싱 로직 예시
+```python
+async def parse_discount_history(self):
+    """C 매장 할인 이력 파싱"""
+    for selector in discount_history_selectors:
+        rows = await self.page.locator(selector).all()
+        for row in rows:
+            cells = await row.locator('td').all()
+            if len(cells) >= 4:
+                # C 매장 구조: [0]삭제링크 [1]날짜 [2]쿠폰명 [3]수량
+                date = (await cells[1].inner_text()).strip()
+                coupon_name = (await cells[2].inner_text()).strip()  
+                quantity_text = (await cells[3].inner_text()).strip()
+                
+                # 수량 추출: "1매" → 1
+                quantity_match = re.search(r'(\d+)', quantity_text)
+                quantity = int(quantity_match.group(1)) if quantity_match else 1
+                
+                # 쿠폰 키 매핑
+                for mapped_name, coupon_key in coupon_key_mapping.items():
+                    if mapped_name in coupon_name:
+                        total_history[coupon_key] = total_history.get(coupon_key, 0) + quantity
+                        break
+```
+
+#### ⚠️ 이력 조회 vs 쿠폰 적용 구분
+| 목적 | 테이블/영역 | 셀렉터 | 데이터 형태 |
+|------|-------------|---------|-------------|
+| **이력 조회** | `tbody[id='discountlist']` | `tbody[id='discountlist'] tr` | 이미 적용된 쿠폰 목록 |
+| **쿠폰 적용** | 적용 가능한 쿠폰 영역 | `a[href*='insert_discount']` | 적용 가능한 쿠폰 링크들 |
+
+### 📊 C 매장 테스트 결과 로그 예시
+
+#### 이력 조회 로그
+```
+🔍 현재 적용된 쿠폰 파싱 시작...
+📊 총 발견된 행 수: 1개
+📊 할인 내역 테이블 발견: 총 1개 행
+📝 행 1: 삭제 | 2025-08-21 02:17:39 | 1시간 유료할인권 | 1매
+📋 사용 이력: {'PAID_1HOUR': 1}
+```
+
+#### 쿠폰 적용 로그  
+```
+[디버그] 'a[href*='insert_discount']' 패턴으로 발견된 링크 수: 2
+[디버그] 링크 1: '1시간 유료할인권' - href: javascript:insert_discount(328304,246);
+[디버그] 링크 2: '2시간 무료할인권' - href: javascript:insert_discount(328304,247);
+[우선순위] 쿠폰 적용 순서: ['2시간 무료할인권']  # 무료 쿠폰 우선
+[성공] 2시간 무료할인권 링크 클릭 완료
+[완료] C 쿠폰 적용 완료: 총 1개
+```
 
 ---
 
