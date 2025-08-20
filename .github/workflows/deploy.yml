@@ -26,6 +26,12 @@ jobs:
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ${{ env.REGION }}
 
+    - name: 🧭 Init status (for Slack)
+      run: echo "STATUS=Unknown" >> $GITHUB_ENV
+
+    - name: ✅ Check AWS identity (STS)
+      run: aws sts get-caller-identity
+
     - name: 🧹 Clean Docker environment
       run: |
         export DOCKER_BUILDKIT=0
@@ -33,43 +39,53 @@ jobs:
 
     - name: 🔓 Login to Amazon ECR
       run: |
-        ECR_URL="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.REGION }}.amazonaws.com/${{ env.IMAGE_NAME }}"
-        aws ecr get-login-password --region ${{ env.REGION }} | docker login --username AWS --password-stdin $ECR_URL
+        REGISTRY="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.REGION }}.amazonaws.com"
+        aws ecr get-login-password --region ${{ env.REGION }} \
+          | docker login --username AWS --password-stdin "$REGISTRY"
 
     - name: 🛠 Build Docker image (linux/amd64)
       run: |
         export DOCKER_BUILDKIT=0
-        ECR_URL="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.REGION }}.amazonaws.com/${{ env.IMAGE_NAME }}"
-        docker build --platform linux/amd64 --no-cache -t ${{ env.IMAGE_NAME }}:latest .
-        ARCH=$(docker inspect ${{ env.IMAGE_NAME }}:latest --format '{{.Architecture}}')
+        REGISTRY="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.REGION }}.amazonaws.com"
+        REPO="${{ env.IMAGE_NAME }}"
+        IMAGE_URI="$REGISTRY/$REPO:latest"
+
+        docker build --platform linux/amd64 --no-cache -t "$REPO:latest" .
+        ARCH=$(docker inspect "$REPO:latest" --format '{{.Architecture}}')
         echo "빌드된 이미지 아키텍처: $ARCH"
         if [ "$ARCH" != "amd64" ]; then
           echo "❌ 잘못된 아키텍처: $ARCH (amd64 필요)"
           echo "STATUS=Build Failed" >> $GITHUB_ENV
           exit 1
         fi
-        docker tag ${{ env.IMAGE_NAME }}:latest $ECR_URL:latest
+
+        docker tag "$REPO:latest" "$IMAGE_URI"
+        echo "IMAGE_URI=$IMAGE_URI" >> $GITHUB_ENV
+
+    - name: 🔎 Check ECR repository exists
+      run: |
+        aws ecr describe-repositories \
+          --repository-names "${{ env.IMAGE_NAME }}" \
+          --region "${{ env.REGION }}"
 
     - name: 📤 Push to Amazon ECR
       run: |
-        ECR_URL="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.REGION }}.amazonaws.com/${{ env.IMAGE_NAME }}"
-        docker push $ECR_URL:latest
+        docker push "${IMAGE_URI}"
 
-    - name: ⏳ Lambda 함수 상태 확인
+    - name: ⏳ Lambda 함수 상태 확인 (사전)
       run: |
-        STATUS=$(aws lambda get-function --function-name ${{ env.FUNCTION_NAME }} --region ${{ env.REGION }} --query 'Configuration.LastUpdateStatus' --output text)
+        STATUS=$(aws lambda get-function --function-name ${{ env.FUNCTION_NAME }} --region ${{ env.REGION }} --query 'Configuration.LastUpdateStatus' --output text || echo "Unknown")
         echo "현재 Lambda 함수 상태: $STATUS"
         while [ "$STATUS" = "InProgress" ]; do
           sleep 10
-          STATUS=$(aws lambda get-function --function-name ${{ env.FUNCTION_NAME }} --region ${{ env.REGION }} --query 'Configuration.LastUpdateStatus' --output text)
+          STATUS=$(aws lambda get-function --function-name ${{ env.FUNCTION_NAME }} --region ${{ env.REGION }} --query 'Configuration.LastUpdateStatus' --output text || echo "Unknown")
         done
 
-    - name: 🔄 Update Lambda function
+    - name: 🔄 Update Lambda function (to latest image)
       run: |
-        ECR_URL="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.REGION }}.amazonaws.com/${{ env.IMAGE_NAME }}"
         aws lambda update-function-code \
           --function-name ${{ env.FUNCTION_NAME }} \
-          --image-uri $ECR_URL:latest \
+          --image-uri "${IMAGE_URI}" \
           --region ${{ env.REGION }} \
           --architectures "x86_64"
 
@@ -90,7 +106,7 @@ jobs:
           fi
         done
 
-    - name: 🧪 Lambda 함수 테스트
+    - name: 🧪 Lambda 함수 테스트 호출
       run: |
         aws lambda invoke \
           --function-name ${{ env.FUNCTION_NAME }} \
@@ -113,8 +129,9 @@ jobs:
         echo "🏷️  이미지: ${{ env.IMAGE_NAME }}"
         echo "🚀 함수: ${{ env.FUNCTION_NAME }}"
         echo "🌍 리전: ${{ env.REGION }}"
+        echo "🖼  이미지 URI: ${IMAGE_URI:-N/A}"
         echo "📅 배포 시간: $(date)"
-        STATUS=$(aws lambda get-function --function-name ${{ env.FUNCTION_NAME }} --region ${{ env.REGION }} --query 'Configuration.LastUpdateStatus' --output text 2>/dev/null || echo "Unknown")
+        STATUS=$(aws lambda get-function --function-name ${{ env.FUNCTION_NAME }} --region ${{ env.REGION }} --query 'Configuration.LastUpdateStatus' --output text 2>/dev/null || echo "${{ env.STATUS }}")
         echo "최종 상태: $STATUS"
         echo "STATUS=$STATUS" >> $GITHUB_ENV
 
