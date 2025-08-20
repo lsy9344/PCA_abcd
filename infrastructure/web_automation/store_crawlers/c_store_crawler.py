@@ -129,7 +129,8 @@ class CStoreCrawler(BaseCrawler, StoreRepository):
                 
                 coupon_configs = config.get('coupons', {})
                 for coupon_key, coupon_info in coupon_configs.items():
-                    available_coupons[coupon_info['name']] = {'car': 0, 'total': 0}
+                    # 기본값을 충분한 개수로 설정 (실제 파싱이 실패해도 쿠폰 적용 가능하도록)
+                    available_coupons[coupon_info['name']] = {'car': 100, 'total': 100}
             except Exception as config_e:
                 self.logger.log_error(ErrorCode.FAIL_PARSE, "쿠폰설정", f"쿠폰 설정 로드 실패: {str(config_e)}")
                 raise
