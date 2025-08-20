@@ -2,7 +2,7 @@ name: 🚀 Deploy to AWS Lambda Container
 
 on:
   push:
-    branches: [workflows]  # 또는 main
+    branches: [workflow]  # 또는 main
   workflow_dispatch:
 
 env:
