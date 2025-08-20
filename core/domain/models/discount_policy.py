@@ -4,7 +4,6 @@
 from dataclasses import dataclass
 from typing import Dict, List
 import math
-from datetime import datetime
 from .coupon import CouponApplication, CouponType
 
 
@@ -168,18 +167,86 @@ class DiscountCalculator:
                                  available_coupons: Dict[str, int],
                                  is_weekday: bool) -> List[CouponApplication]:
         """
-        동적 계산 알고리즘 기반 쿠폰 계산
+        동적 계산 알고리즘 기반 쿠폰 계산 - 추가로 필요한 쿠폰만 반환
         """
         target_minutes = self.policy.get_target_minutes(is_weekday)
         
-        # 동적 계산 알고리즘 호출
-        applications_dict = calculate_dynamic_coupons(
-            target_minutes=target_minutes,
-            coupon_configs=self.coupon_configs,
-            my_history=my_history,
-            total_history=total_history,
-            is_weekday=is_weekday
-        )
+        # 현재 적용된 시간 계산
+        current_minutes = 0
+        for config in self.coupon_configs:
+            if config.coupon_type == 'FREE':
+                # 무료 쿠폰: 전체 이력과 매장 이력 중 최대값 사용
+                total_used = total_history.get(config.coupon_key, 0)
+                my_used = my_history.get(config.coupon_key, 0)
+                used_count = max(total_used, my_used)
+            else:
+                # 유료/주말 쿠폰: 매장별 이력만 사용
+                used_count = my_history.get(config.coupon_key, 0)
+            current_minutes += used_count * config.duration_minutes
+        
+        print(f"   📊 현재 적용된 할인: {current_minutes}분")
+        print(f"   🎯 목표 할인: {target_minutes}분")
+        
+        # 이미 목표 달성한 경우
+        if current_minutes >= target_minutes:
+            print(f"   ✅ 이미 목표 달성됨 (현재: {current_minutes}분 >= 목표: {target_minutes}분)")
+            return []
+        
+        # 사용되지 않는 변수들 제거됨 (empty_my_history, empty_total_history)
+        
+        # 남은 시간 계산
+        remaining_minutes = target_minutes - current_minutes
+        print(f"   📊 추가 필요한 할인: {remaining_minutes}분")
+        
+        # 단순히 남은 시간에 대해 쿠폰 계산 (동적 알고리즘 우회)
+        applications_dict = {}
+        
+        if remaining_minutes > 0:
+            # 무료 쿠폰이 이미 사용되었는지 확인
+            free_already_used = False
+            for config in self.coupon_configs:
+                if config.coupon_type == 'FREE':
+                    total_used = total_history.get(config.coupon_key, 0)
+                    my_used = my_history.get(config.coupon_key, 0)
+                    if total_used > 0 or my_used > 0:
+                        free_already_used = True
+                        break
+            
+            # 무료 쿠폰 적용 (아직 사용 안했고, 남은 시간이 충분한 경우)
+            if not free_already_used:
+                for config in self.coupon_configs:
+                    if config.coupon_type == 'FREE' and remaining_minutes >= config.duration_minutes:
+                        applications_dict[config.coupon_key] = 1
+                        remaining_minutes -= config.duration_minutes
+                        break
+            
+            # 유료/주말 쿠폰으로 남은 시간 채우기
+            if remaining_minutes > 0:
+                if is_weekday:
+                    target_types = ['PAID']
+                else:
+                    # 주말: WEEKEND 우선, 없으면 PAID 사용
+                    weekend_coupons = [c for c in self.coupon_configs if c.coupon_type == 'WEEKEND']
+                    target_types = ['WEEKEND'] if weekend_coupons else ['PAID']
+                
+                for coupon_type in target_types:
+                    type_coupons = [c for c in self.coupon_configs if c.coupon_type == coupon_type]
+                    
+                    for config in sorted(type_coupons, key=lambda x: x.priority):
+                        if remaining_minutes <= 0:
+                            break
+                        
+                        # 필요한 쿠폰 개수 계산 (올림)
+                        import math
+                        needed_count = math.ceil(remaining_minutes / config.duration_minutes)
+                        
+                        if needed_count > 0:
+                            applications_dict[config.coupon_key] = needed_count
+                            remaining_minutes -= needed_count * config.duration_minutes
+                            remaining_minutes = max(0, remaining_minutes)
+                            break
+        
+        print(f"   📊 추가 필요한 쿠폰: {applications_dict}")
         
         # CouponApplication 객체로 변환
         applications = []

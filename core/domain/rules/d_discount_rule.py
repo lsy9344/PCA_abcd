@@ -10,7 +10,7 @@ import logging
 import yaml
 from pathlib import Path
 from core.domain.models.discount_policy import (
-    DiscountCalculator, DiscountPolicy, CouponConfig, calculate_dynamic_coupons
+    DiscountCalculator, DiscountPolicy, CouponConfig
 )
 
 
@@ -83,9 +83,6 @@ class DDiscountRule:
             
             self.logger.info(f"[D 매장] {'평일' if is_weekday else '주말'} 쿠폰 계산 시작")
             
-            # 목표 시간 (분 단위)
-            target_minutes = self.policy.get_target_minutes(is_weekday)
-            
             # 이력 키 변환: coupon_name → coupon_key (할인 계산기 호환)
             my_history_by_key = self._convert_history_keys(my_history)
             total_history_by_key = self._convert_history_keys(total_history)
@@ -93,45 +90,30 @@ class DDiscountRule:
             self.logger.info(f"[D 매장] 변환된 내 이력: {my_history_by_key}")
             self.logger.info(f"[D 매장] 변환된 전체 이력: {total_history_by_key}")
             
-            # 동적 계산 알고리즘 호출
-            applications_dict = calculate_dynamic_coupons(
-                target_minutes=target_minutes,
-                coupon_configs=self.coupon_configs,
+            # DiscountCalculator를 사용하여 추가 필요한 쿠폰만 계산
+            applications = self.calculator.calculate_required_coupons(
                 my_history=my_history_by_key,
                 total_history=total_history_by_key,
+                available_coupons=discount_info,
                 is_weekday=is_weekday
             )
             
-            self.logger.info(f"[D 매장] 동적 계산 결과: {applications_dict}")
-            
-            # 보유 쿠폰 체크 및 실제 적용 가능 개수 조정
-            final_applications = {}
-            for coupon_key, count in applications_dict.items():
-                config = next((c for c in self.coupon_configs if c.coupon_key == coupon_key), None)
-                if config:
-                    available = discount_info.get(config.coupon_name, 0)
-                    actual_count = min(count, available)
-                    if actual_count > 0:
-                        final_applications[coupon_key] = actual_count
-                    
-                    self.logger.info(f"[D 매장] {config.coupon_name}: 계산값 {count}개, 보유 {available}개 → 적용 {actual_count}개")
+            self.logger.info(f"[D 매장] 추가 필요한 쿠폰 계산 완료: {len(applications)}개")
             
             # 표준 형식으로 변환 (인터페이스 호환)
             result = {'FREE_1HOUR': 0, 'PAID_30MIN': 0}
-            for coupon_key, count in final_applications.items():
-                config = next((c for c in self.coupon_configs if c.coupon_key == coupon_key), None)
+            total_apply_minutes = 0
+            
+            for app in applications:
+                config = next((c for c in self.coupon_configs if c.coupon_name == app.coupon_name), None)
                 if config:
                     if config.coupon_type == 'FREE':
-                        result['FREE_1HOUR'] = count
+                        result['FREE_1HOUR'] = app.count
                     elif config.coupon_type == 'PAID':
-                        result['PAID_30MIN'] = count
-            
-            # 계산 결과 검증 및 D매장 특수 조건 확인
-            total_apply_minutes = 0
-            for coupon_key, count in final_applications.items():
-                config = next((c for c in self.coupon_configs if c.coupon_key == coupon_key), None)
-                if config:
-                    total_apply_minutes += count * config.duration_minutes
+                        result['PAID_30MIN'] = app.count
+                    
+                    total_apply_minutes += app.count * config.duration_minutes
+                    self.logger.info(f"[D 매장] {app.coupon_name}: {app.count}개 ({app.count * config.duration_minutes}분)")
             
             # D 매장 특징: 30분 단위 쿠폰으로 인한 추가 로깅
             paid_minutes = result['PAID_30MIN'] * 30
@@ -140,8 +122,7 @@ class DDiscountRule:
             self.logger.info(f"[D 매장] 최종 적용 계획: {result}")
             self.logger.info(f"[D 매장] 무료쿠폰: {result['FREE_1HOUR']}개 ({free_minutes}분)")
             self.logger.info(f"[D 매장] 유료쿠폰: {result['PAID_30MIN']}개 ({paid_minutes}분) - 30분 단위")
-            self.logger.info(f"[D 매장] 총 적용 시간: {total_apply_minutes}분 (목표: {target_minutes}분)")
-            self.logger.info(f"[D 매장] 목표 달성: {'성공' if total_apply_minutes >= target_minutes else '실패'}")
+            self.logger.info(f"[D 매장] 추가 적용 시간: {total_apply_minutes}분")
             
             if not is_weekday:
                 self.logger.info("[D 매장] 주말 특징: WEEKEND 쿠폰 없음 → PAID 타입으로 fallback 적용됨")

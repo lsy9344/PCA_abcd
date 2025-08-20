@@ -9,7 +9,7 @@ import logging
 import yaml
 from pathlib import Path
 from core.domain.models.discount_policy import (
-    DiscountCalculator, DiscountPolicy, CouponConfig, calculate_dynamic_coupons
+    DiscountCalculator, DiscountPolicy, CouponConfig
 )
 
 
@@ -25,11 +25,14 @@ class ADiscountRule:
             config = yaml.safe_load(f)
         
         # DiscountPolicy 생성
-        policy_config = config.get('policy', {})
+        discount_policy_config = config.get('discount_policy', {})
+        weekday_config = discount_policy_config.get('weekday', {})
+        weekend_config = discount_policy_config.get('weekend', {})
+        
         self.policy = DiscountPolicy(
             store_id="A",
-            weekday_target_minutes=policy_config.get('weekday_target_minutes', 180),
-            weekend_target_minutes=policy_config.get('weekend_target_minutes', 120)
+            weekday_target_minutes=weekday_config.get('target_hours', 3) * 60,  # 시간을 분으로 변환
+            weekend_target_minutes=weekend_config.get('target_hours', 2) * 60   # 시간을 분으로 변환
         )
         
         # CouponConfig 리스트 생성
@@ -83,54 +86,35 @@ class ADiscountRule:
             
             self.logger.info(f"[A 매장] {'평일' if is_weekday else '주말'} 쿠폰 계산 시작")
             
-            # 목표 시간 (분 단위)
-            target_minutes = self.policy.get_target_minutes(is_weekday)
-            
-            # 동적 계산 알고리즘 호출
-            applications_dict = calculate_dynamic_coupons(
-                target_minutes=target_minutes,
-                coupon_configs=self.coupon_configs,
+            # DiscountCalculator를 사용하여 추가 필요한 쿠폰만 계산
+            applications = self.calculator.calculate_required_coupons(
                 my_history=my_history,
                 total_history=total_history,
+                available_coupons=discount_info,
                 is_weekday=is_weekday
             )
             
-            self.logger.info(f"[A 매장] 동적 계산 결과: {applications_dict}")
-            
-            # 보유 쿠폰 체크 및 실제 적용 가능 개수 조정
-            final_applications = {}
-            for coupon_key, count in applications_dict.items():
-                config = next((c for c in self.coupon_configs if c.coupon_key == coupon_key), None)
-                if config:
-                    available = discount_info.get(config.coupon_name, 0)
-                    actual_count = min(count, available)
-                    if actual_count > 0:
-                        final_applications[coupon_key] = actual_count
-                    
-                    self.logger.info(f"[A 매장] {config.coupon_name}: 계산값 {count}개, 보유 {available}개 → 적용 {actual_count}개")
+            self.logger.info(f"[A 매장] 추가 필요한 쿠폰 계산 완료: {len(applications)}개")
             
             # 표준 형식으로 변환 (인터페이스 호환)
             result = {'FREE_1HOUR': 0, 'PAID_1HOUR': 0, 'WEEKEND_1HOUR': 0}
-            for coupon_key, count in final_applications.items():
-                config = next((c for c in self.coupon_configs if c.coupon_key == coupon_key), None)
+            total_apply_minutes = 0
+            
+            for app in applications:
+                config = next((c for c in self.coupon_configs if c.coupon_name == app.coupon_name), None)
                 if config:
                     if config.coupon_type == 'FREE':
-                        result['FREE_1HOUR'] = count
+                        result['FREE_1HOUR'] = app.count
                     elif config.coupon_type == 'PAID':
-                        result['PAID_1HOUR'] = count
+                        result['PAID_1HOUR'] = app.count
                     elif config.coupon_type == 'WEEKEND':
-                        result['WEEKEND_1HOUR'] = count
-            
-            # 계산 결과 검증
-            total_apply_minutes = 0
-            for coupon_key, count in final_applications.items():
-                config = next((c for c in self.coupon_configs if c.coupon_key == coupon_key), None)
-                if config:
-                    total_apply_minutes += count * config.duration_minutes
+                        result['WEEKEND_1HOUR'] = app.count
+                    
+                    total_apply_minutes += app.count * config.duration_minutes
+                    self.logger.info(f"[A 매장] {app.coupon_name}: {app.count}개 ({app.count * config.duration_minutes}분)")
             
             self.logger.info(f"[A 매장] 최종 적용 계획: {result}")
-            self.logger.info(f"[A 매장] 총 적용 시간: {total_apply_minutes}분 (목표: {target_minutes}분)")
-            self.logger.info(f"[A 매장] 목표 달성: {'성공' if total_apply_minutes >= target_minutes else '실패'}")
+            self.logger.info(f"[A 매장] 추가 적용 시간: {total_apply_minutes}분")
             
             return result
             

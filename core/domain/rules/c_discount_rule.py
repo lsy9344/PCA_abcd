@@ -21,10 +21,14 @@ class CDiscountRule:
         self.config = self._load_store_config()
         
         # DiscountPolicy 생성 (설정 기반)
+        discount_policy_config = self.config.get('discount_policy', {})
+        weekday_config = discount_policy_config.get('weekday', {})
+        weekend_config = discount_policy_config.get('weekend', {})
+        
         policy = DiscountPolicy(
             store_id="C",
-            weekday_target_minutes=self.config['policy']['weekday_target_minutes'],
-            weekend_target_minutes=self.config['policy']['weekend_target_minutes']
+            weekday_target_minutes=weekday_config.get('target_hours', 3) * 60,  # 시간을 분으로 변환
+            weekend_target_minutes=weekend_config.get('target_hours', 2) * 60   # 시간을 분으로 변환
         )
         
         # CouponConfig 리스트 생성 (설정 기반)
