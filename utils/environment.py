@@ -20,7 +20,10 @@ def load_environment_config() -> Dict[str, Any]:
         env_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config', 'environment.local')
         if os.path.exists(env_file):
             load_dotenv(env_file)
-        
+            print(f"로컬 환경 설정 로드: {env_file}")
+        else:
+            print(f"환경 설정 파일을 찾을 수 없습니다: {env_file}")
+    
     # 환경 변수에서 설정값 읽기
     config = {
         # 기본 설정
@@ -92,11 +95,48 @@ def get_pc_ip_address():
         return 'localhost'
         
     except Exception as e:
+        print(f"IP 주소 조회 실패: {e}")
         return 'localhost'
 
 def print_environment_info(config: Dict[str, Any]):
-    """현재 환경 설정 정보를 출력합니다. (관리용 함수)"""
-    pass
+    """
+    현재 환경 설정 정보를 출력합니다.
+    """
+    print("========================================")
+    print("현재 환경 설정:")
+    print("========================================")
+    print(f"환경: {config['ENVIRONMENT']}")
+    print(f"디버그 모드: {config['DEBUG']}")
+    print(f"서버 주소: {config['LOCAL_SERVER_HOST']}:{config['LOCAL_SERVER_PORT']}")
+    print(f"Playwright 헤드리스: {config['PLAYWRIGHT']['HEADLESS']}")
+    print(f"로그 레벨: {config['LOGGING']['LEVEL']}")
+    
+    # IP 주소 정보
+    ip_address = get_pc_ip_address()
+    print(f"PC IP 주소: {ip_address}")
+    
+    # 매장 설정 확인
+    store_a_configured = bool(config['STORE_A']['URL'] and config['STORE_A']['USERNAME'])
+    store_b_configured = bool(config['STORE_B']['URL'] and config['STORE_B']['USERNAME'])
+    print(f"매장 A 설정: {'✓' if store_a_configured else '✗'}")
+    print(f"매장 B 설정: {'✓' if store_b_configured else '✗'}")
+    
+    # 텔레그램 설정 확인
+    telegram_configured = bool(config['TELEGRAM']['BOT_TOKEN'] and config['TELEGRAM']['CHAT_ID'])
+    print(f"텔레그램 알림: {'✓' if telegram_configured else '✗'}")
+    
+    print("========================================")
+    
+    # 웹훅 URL 정보
+    webhook_url_local = f"http://localhost:{config['LOCAL_SERVER_PORT']}/webhook"
+    webhook_url_network = f"http://{ip_address}:{config['LOCAL_SERVER_PORT']}/webhook"
+    
+    print("웹훅 URL:")
+    print(f"  로컬: {webhook_url_local}")
+    print(f"  네트워크: {webhook_url_network}")
+    print("========================================")
 
 if __name__ == '__main__':
-    config = load_environment_config() 
+    # 테스트 실행
+    config = load_environment_config()
+    print_environment_info(config) 

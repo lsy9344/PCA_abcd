@@ -30,11 +30,14 @@ class CommonCouponCalculator:
         my_history = {}
         total_history = {}
         
+        print(f"   🔍 현재 적용된 쿠폰 파싱 시작...")
         
         # 페이지에서 사용 가능한 모든 테이블 확인
         try:
             all_tables = await page.locator('table').all()
             all_tbodies = await page.locator('tbody').all()
+            print(f"     🔍 페이지 내 총 테이블 수: {len(all_tables)}개")
+            print(f"     🔍 페이지 내 총 tbody 수: {len(all_tbodies)}개")
             
             # tbody id/name 속성 확인
             for i, tbody in enumerate(all_tbodies):
@@ -42,18 +45,23 @@ class CommonCouponCalculator:
                     id_attr = await tbody.get_attribute('id')
                     name_attr = await tbody.get_attribute('name')
                     class_attr = await tbody.get_attribute('class')
+                    print(f"     🔍 tbody {i+1}: id='{id_attr}', name='{name_attr}', class='{class_attr}'")
                 except:
                     pass
         except Exception as e:
+            print(f"     ⚠️ 페이지 구조 분석 오류: {str(e)}")
         
         # 모든 셀렉터를 하나로 합쳐서 모든 행을 가져오기 (B 매장의 경우 ev_ 와 odd_ 모두 필요)
         all_rows = []
         all_selector = ", ".join(discount_selectors)
         
         try:
+            print(f"     🎯 통합 셀렉터 사용: {all_selector}")
             all_rows = await page.locator(all_selector).all()
+            print(f"     📊 총 발견된 행 수: {len(all_rows)}개")
             
             if len(all_rows) > 0:
+                print(f"     📊 할인 내역 테이블 발견: 총 {len(all_rows)}개 행")
                 
                 for row_idx, row in enumerate(all_rows):
                     try:
@@ -67,6 +75,7 @@ class CommonCouponCalculator:
                                     cell_text = await cell.inner_text()
                                     cell_texts.append(cell_text.strip())
                                 
+                                print(f"     📝 행 {row_idx + 1}: {' | '.join(cell_texts[:5])}")  # 처음 5개 셀 출력
                                 
                                 # 매장별 데이터 구조 처리
                                 if len(cell_texts) >= 3:
@@ -85,6 +94,7 @@ class CommonCouponCalculator:
                                         import re
                                         quantity_match = re.search(r'(\d+)', quantity_cell)
                                         quantity = int(quantity_match.group(1)) if quantity_match else 1
+                                        print(f"     🅰️ A매장 패턴 감지: {coupon_cell} {quantity}개")
                                     
                                     # B매장 패턴: 2번째 셀에 쿠폰명이 있고, 차량 정보 행이 아닌 경우
                                     elif len(cell_texts) >= 4:
@@ -102,14 +112,18 @@ class CommonCouponCalculator:
                                         # 차량 정보 행 제외 (차량번호가 포함된 행, 숫자만 있는 행, 날짜만 있는 행)
                                         if "다" in second_cell or "차" in second_cell:  # 차량번호 패턴 (38다4603)
                                             is_coupon_row = False
+                                            print(f"     🚫 B매장 차량 정보 행 스킵 (차량번호): {second_cell}")
                                         elif second_cell.isdigit():  # 숫자만 있는 경우
                                             is_coupon_row = False
+                                            print(f"     🚫 B매장 기타 정보 행 스킵 (숫자): {second_cell}")
                                         elif len(second_cell) > 20:  # 너무 긴 텍스트 (차량 정보일 가능성)
                                             is_coupon_row = False
+                                            print(f"     🚫 B매장 기타 정보 행 스킵 (긴텍스트): {second_cell}")
                                         
                                         if is_coupon_row:
                                             coupon_cell = second_cell
                                             quantity = 1  # B매장은 항상 1개씩
+                                            print(f"     🅱️ B매장 패턴 감지: {coupon_cell}")
                                         else:
                                             coupon_cell = None
                                     
@@ -121,6 +135,7 @@ class CommonCouponCalculator:
                                         import re
                                         quantity_match = re.search(r'(\d+)', quantity_cell)
                                         quantity = int(quantity_match.group(1)) if quantity_match else 1
+                                        print(f"     🅲 C매장 패턴 감지: {coupon_cell} {quantity}개")
                                     
                                     if coupon_cell:
                                         # 쿠폰 이름 매핑 확인
@@ -131,27 +146,38 @@ class CommonCouponCalculator:
                                                     my_history[coupon_key] = my_history.get(coupon_key, 0) + quantity
                                                 total_history[coupon_key] = total_history.get(coupon_key, 0) + quantity
                                                 
+                                                print(f"     ✅ 적용된 쿠폰 발견: {mapped_name} {quantity}개 -> {coupon_key}")
                                                 break
                                         
                     except Exception as e:
+                        print(f"     ⚠️ 행 파싱 오류: {str(e)}")
                         continue
                         
         except Exception as e:
+            print(f"     ⚠️ 통합 테이블 파싱 오류: {str(e)}")
             # 실패하면 기존 방식으로 fallback
             for selector in discount_selectors:
                 try:
+                    print(f"     🎯 개별 셀렉터 fallback: {selector}")
                     rows = await page.locator(selector).all()
+                    print(f"     📊 발견된 행 수: {len(rows)}개")
                     
                     if len(rows) > 0:
+                        print(f"     📊 할인 내역 테이블 발견: {selector} ({len(rows)}개 행)")
                         # 기존 파싱 로직과 동일하게 처리
                         break
                         
                 except Exception as e:
+                    print(f"     ⚠️ 개별 셀렉터 파싱 오류: {str(e)}")
                     continue
         
         # 파싱 결과 출력
         if my_history or total_history:
-            else:
+            print(f"   📊 현재 적용된 쿠폰 내역:")
+            print(f"     - 매장 내역: {my_history}")
+            print(f"     - 전체 내역: {total_history}")
+        else:
+            print(f"   📊 현재 적용된 쿠폰 없음 (새로 적용 가능)")
         
         return my_history, total_history
 
@@ -180,6 +206,8 @@ class CommonCouponCalculator:
         
         remaining_minutes = max(0, target_minutes - current_minutes)
         
+        print(f"   📊 현재 적용된 할인: {current_minutes}분")
+        print(f"   📊 추가 필요 할인: {remaining_minutes}분")
         
         return remaining_minutes
 

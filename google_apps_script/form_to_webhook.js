@@ -90,6 +90,7 @@ function handleMultiSubmissionCheck(sheetName, storeInfo) {
 
       if (timeDiffMinutes < MULTI_SUBMISSION_WINDOW_MINUTES) {
         // 40분 내의 추가 제출이므로 알림만 보내고 시간은 갱신하지 않음
+        console.log(`🚨 다중 등록 감지 (${storeInfo.name}, ${Math.floor(timeDiffMinutes)}분 전)`);
         const alertMessage = `🚨 차량 여러대 등록 감지\n\n🏪 매장: ${storeInfo.name}\n📋 시트: ${sheetName}\n⏰ 현재시간: ${new Date(now).toLocaleString('ko-KR')}\n⏱️ 이전 제출 후: ${Math.floor(timeDiffMinutes)}분 경과\n\n${MULTI_SUBMISSION_WINDOW_MINUTES}분 내에 여러 차량이 등록되었습니다.\nCCTV로 인원수를 확인하세요.`;
         sendTelegramMessage(alertMessage);
       } else {
@@ -103,6 +104,7 @@ function handleMultiSubmissionCheck(sheetName, storeInfo) {
       properties.setProperty(MULTI_SUBMISSION_KEY, JSON.stringify(timestamps));
     }
   } catch (error) {
+    console.error('⚠️ 다중 제출 감지 기능 오류:', error);
   }
 }
 
@@ -117,6 +119,7 @@ function loadDuplicatePreventionData() {
     if (!dataString) return {};
     return JSON.parse(dataString);
   } catch (error) {
+    console.error('⚠️ 중복 방지 데이터 로드 실패:', error);
     return {};
   }
 }
@@ -129,6 +132,7 @@ function saveDuplicatePreventionData(data) {
     const properties = PropertiesService.getScriptProperties();
     properties.setProperty(DUPLICATE_PREVENTION_KEY, JSON.stringify(data));
   } catch (error) {
+    console.error('⚠️ 중복 방지 데이터 저장 실패:', error);
   }
 }
 
@@ -145,6 +149,7 @@ function cleanupOldDuplicateData(data) {
       cleanedCount++;
     }
   }
+  if (cleanedCount > 0) console.log(`🧹 오래된 중복 방지 데이터 ${cleanedCount}개 정리됨`);
   return data;
 }
 
@@ -300,6 +305,7 @@ function onFormSubmit(e) {
       throw new Error(response.error);
     }
   } catch (error) {
+    console.error('❌ 폼 처리 오류:', error);
     
     // 백엔드에서 더 상세한 알림을 보내주므로, Apps Script의 중복 알림은 비활성화합니다.
     if (e.range) {
@@ -316,6 +322,7 @@ function markProcessingStatus(sheet, rowNumber, message) {
   try {
     sheet.getRange(rowNumber, 4).setValue(message);
   } catch (error) {
+    console.error('⚠️ 처리상태 기록 실패:', error);
   }
 }
 
@@ -330,6 +337,7 @@ function sendTelegramMessage(message) {
     const options = { method: 'POST', headers: { 'Content-Type': 'application/json' }, payload: JSON.stringify(payload), deadline: 10 };
     UrlFetchApp.fetch(url, options);
   } catch (error) {
+    console.error('📱 텔레그램 알림 전송 실패:', error);
   }
 }
 
@@ -341,6 +349,8 @@ function clearAllDuplicateData() {
     const properties = PropertiesService.getScriptProperties();
     properties.deleteProperty(DUPLICATE_PREVENTION_KEY);
     properties.deleteProperty(MULTI_SUBMISSION_KEY);
+    console.log('🧹 모든 중복 방지 및 다중 등록 감지 데이터가 정리되었습니다');
   } catch (error) {
+    console.error('❌ 데이터 정리 실패:', error);
   }
 }
