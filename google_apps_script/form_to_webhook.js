@@ -32,48 +32,46 @@ const MULTI_SUBMISSION_KEY = 'PARKING_MULTI_SUBMISSION_TIMESTAMPS';
 
 // 시트명 → 매장 정보 매핑
 const SHEET_STORE_MAP = {
-  'A매장': {
-    store_id: 'A',
-    name: 'A매장',
-    vehicle_format: 'flexible',
-    description: '주차쿠폰 신청',
-    aliases: ['A매장', 'A점', 'A', 'store_a', 'STORE_A']
-  },
-  'B매장': {
-    store_id: 'B',
-    name: 'B매장',
-    vehicle_format: 'flexible',
-    description: '주차쿠폰 신청',
-    aliases: ['B매장', 'B점', 'B', 'store_b', 'STORE_B']
-  },
-  'C매장': {
-    store_id: 'C',
-    name: 'C매장',
-    vehicle_format: 'flexible',
-    description: '주차쿠폰 신청',
-    aliases: ['C매장', 'C점', 'C', 'store_c', 'STORE_C']
-  },
-  'D매장': {
-    store_id: 'D',
-    name: 'D매장',
-    vehicle_format: 'flexible',
-    description: '주차쿠폰 신청',
-    aliases: ['D매장', 'D점', 'D', 'store_d', 'STORE_D']
-  },
-  'E매장': {
-    store_id: 'E',
-    name: 'E매장',
-    vehicle_format: 'flexible',
-    description: '주차쿠폰 신청',
-    aliases: ['E매장', 'E점', 'E', 'store_e', 'STORE_E']
-  },
+
   '동탄점': {
     store_id: 'A',
     name: '동탄점',
-    vehicle_format: 'last4_preferred',
-    description: '주차정산 신청',
-    aliases: ['동탄점', '동탄', 'dontan', 'DONTAN', '동탄매장']
-  }
+    vehicle_format: 'flexible',
+    description: '주차쿠폰 신청',
+    aliases: ['A매장', 'A', '동탄', '동탄점']
+  },
+
+  '호매실점': {
+    store_id: 'B',
+    name: '호매실점',
+    vehicle_format: 'flexible',
+    description: '주차쿠폰 신청',
+    aliases: ['B매장', 'B', '호매실', '호매실점']
+  },
+
+  '인천검단점': {
+    store_id: 'C',
+    name: '인천검단점',
+    vehicle_format: 'flexible',
+    description: '주차쿠폰 신청',
+    aliases: ['C매장', 'C', '인천검단', '검단', '인천검단점', '검단점']
+  },
+
+  '송산점': {
+    store_id: 'D',
+    name: '송산점',
+    vehicle_format: 'flexible',
+    description: '주차쿠폰 신청',
+    aliases: ['D매장', 'D', '송산', '새솔', '송산점', '새솔점']
+  },
+
+  '부천점': {
+    store_id: 'E',
+    name: '부천점',
+    vehicle_format: 'flexible',
+    description: '주차쿠폰 신청',
+    aliases: ['E매장', 'E', '부천', '부천점']
+  },
 };
 
 /**
