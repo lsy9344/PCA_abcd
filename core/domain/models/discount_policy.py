@@ -184,19 +184,15 @@ class DiscountCalculator:
                 used_count = my_history.get(config.coupon_key, 0)
             current_minutes += used_count * config.duration_minutes
         
-        print(f"   📊 현재 적용된 할인: {current_minutes}분")
-        print(f"   🎯 목표 할인: {target_minutes}분")
         
         # 이미 목표 달성한 경우
         if current_minutes >= target_minutes:
-            print(f"   ✅ 이미 목표 달성됨 (현재: {current_minutes}분 >= 목표: {target_minutes}분)")
             return []
         
         # 사용되지 않는 변수들 제거됨 (empty_my_history, empty_total_history)
         
         # 남은 시간 계산
         remaining_minutes = target_minutes - current_minutes
-        print(f"   📊 추가 필요한 할인: {remaining_minutes}분")
         
         # 단순히 남은 시간에 대해 쿠폰 계산 (동적 알고리즘 우회)
         applications_dict = {}
@@ -246,7 +242,6 @@ class DiscountCalculator:
                             remaining_minutes = max(0, remaining_minutes)
                             break
         
-        print(f"   📊 추가 필요한 쿠폰: {applications_dict}")
         
         # CouponApplication 객체로 변환
         applications = []
