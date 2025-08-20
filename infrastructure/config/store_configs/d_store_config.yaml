@@ -24,9 +24,13 @@ coupons:
   # WEEKEND 타입 쿠폰 없음 → 주말에도 PAID 타입 사용 (fallback)
 
 # 할인 정책 - 시간 기반 (분 단위)
-policy:
-  weekday_target_minutes: 180  # 3시간
-  weekend_target_minutes: 120  # 2시간
+discount_policy:
+  weekday:
+    target_hours: 3
+    max_coupons: 5
+  weekend:
+    target_hours: 2
+    max_coupons: 3
 
 # 웹 셀렉터 (실제 테스트로 확인된 값)
 selectors:

@@ -25,9 +25,13 @@ coupons:
     priority: 1
 
 # 할인 정책 (분 단위로 표준화)
-policy:
-  weekday_target_minutes: 180  # 3시간 = 180분
-  weekend_target_minutes: 120  # 2시간 = 120분
+discount_policy:
+  weekday:
+    target_hours: 3
+    max_coupons: 5
+  weekend:
+    target_hours: 2
+    max_coupons: 3
 
 # 웹 셀렉터 (스크린샷 확인 후 업데이트)
 selectors:
