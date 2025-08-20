@@ -25,11 +25,14 @@ class BDiscountRule:
             config = yaml.safe_load(f)
         
         # DiscountPolicy 생성
-        policy_config = config.get('policy', {})
+        discount_policy_config = config.get('discount_policy', {})
+        weekday_config = discount_policy_config.get('weekday', {})
+        weekend_config = discount_policy_config.get('weekend', {})
+        
         self.policy = DiscountPolicy(
             store_id="B",
-            weekday_target_minutes=policy_config.get('weekday_target_minutes', 180),
-            weekend_target_minutes=policy_config.get('weekend_target_minutes', 120)
+            weekday_target_minutes=weekday_config.get('target_hours', 3) * 60,  # 시간을 분으로 변환
+            weekend_target_minutes=weekend_config.get('target_hours', 2) * 60   # 시간을 분으로 변환
         )
         
         # CouponConfig 리스트 생성

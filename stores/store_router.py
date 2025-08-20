@@ -7,6 +7,7 @@ from infrastructure.web_automation.store_crawlers.a_store_crawler import AStoreC
 from infrastructure.web_automation.store_crawlers.b_store_crawler import BStoreCrawler
 from infrastructure.web_automation.store_crawlers.c_store_crawler import CStoreCrawler
 from infrastructure.web_automation.store_crawlers.d_store_crawler import DStoreCrawler
+from infrastructure.web_automation.store_crawlers.e_store_crawler import EStoreCrawler
 
 # 매장 ID와 크롤러 클래스 매핑
 STORE_CRAWLER_CLASSES = {
@@ -14,6 +15,7 @@ STORE_CRAWLER_CLASSES = {
     "B": BStoreCrawler,
     "C": CStoreCrawler,
     "D": DStoreCrawler,
+    "E": EStoreCrawler,
 }
 
 # 매장별 Lambda 핸들러 파일 매핑
@@ -22,6 +24,7 @@ STORE_LAMBDA_FILES = {
     "B": "lambda_b.py", 
     "C": "lambda_c.py",
     "D": "lambda_d.py",
+    "E": "lambda_e.py",
 }
 
 def get_store_crawler_class(store_id: str) -> Type:
@@ -29,7 +32,7 @@ def get_store_crawler_class(store_id: str) -> Type:
     store_id에 해당하는 매장 크롤러 클래스를 반환
     
     Args:
-        store_id (str): 매장 식별자 (A, B, C, D)
+        store_id (str): 매장 식별자 (A, B, C, D, E)
         
     Returns:
         Type: 매장 크롤러 클래스
