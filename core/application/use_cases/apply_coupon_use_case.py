@@ -165,6 +165,16 @@ class ApplyCouponUseCase:
     
     def _convert_history_keys(self, history_by_name: dict, coupon_configs: list) -> dict:
         """이력 키 변환: coupon_name → coupon_key"""
+        # 이미 coupon_key 형태인지 확인 (CommonCouponCalculator에서 파싱된 경우)
+        config_keys = {config.coupon_key for config in coupon_configs}
+        history_keys = set(history_by_name.keys())
+        
+        # 모든 키가 이미 coupon_key 형태인 경우 변환 없이 반환
+        if history_keys.issubset(config_keys):
+            self._logger.debug(f"이력이 이미 coupon_key 형태임: {history_by_name}")
+            return history_by_name
+        
+        # coupon_name 형태인 경우 변환
         history_by_key = {}
         for config in coupon_configs:
             if config.coupon_name in history_by_name:
