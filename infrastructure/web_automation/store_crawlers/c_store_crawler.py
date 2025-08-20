@@ -74,7 +74,7 @@ class CStoreCrawler(BaseCrawler, StoreRepository):
             # 차량번호 입력
             car_input_selector = self.store_config.selectors['search']['car_number_input']
             await self.page.fill(car_input_selector, car_number)
-            self.logger.log_info(f"[진행] 차량번호 입력 완료: {car_number}")
+            self.logger.log_info(f"[성공] 차량번호 입력 완료: {car_number}")
             
             # 검색 버튼 클릭
             if not await self._click_search_button():
@@ -108,20 +108,16 @@ class CStoreCrawler(BaseCrawler, StoreRepository):
     async def get_coupon_history(self, vehicle: Vehicle) -> CouponHistory:
         """쿠폰 이력 조회"""
         try:
-            self.logger.log_info("[C 매장] get_coupon_history 시작")
             my_history = {}
             total_history = {}
             available_coupons = {}
             
-            # 페이지 안전성 검사 (92번 지침)
-            self.logger.log_info("[C 매장] 페이지 안전성 검사 시작")
+            # 페이지 안전성 검사
             if not await self._safe_page_check():
                 self.logger.log_warning("페이지 상태 불안정 - 빈 이력 반환")
                 return self._empty_coupon_history(vehicle.number)
-            self.logger.log_info("[C 매장] 페이지 안전성 검사 통과")
             
             # 기본 쿠폰 정보 설정 (YAML 파일에서 직접 로드)
-            self.logger.log_info("[C 매장] 쿠폰 설정 로드 시작")
             try:
                 # C 매장 설정 로드 (YAML 파일에서 직접)
                 import yaml
@@ -134,7 +130,6 @@ class CStoreCrawler(BaseCrawler, StoreRepository):
                 coupon_configs = config.get('coupons', {})
                 for coupon_key, coupon_info in coupon_configs.items():
                     available_coupons[coupon_info['name']] = {'car': 0, 'total': 0}
-                self.logger.log_info(f"[C 매장] 쿠폰 설정 로드 완료: {list(available_coupons.keys())}")
             except Exception as config_e:
                 self.logger.log_error(ErrorCode.FAIL_PARSE, "쿠폰설정", f"쿠폰 설정 로드 실패: {str(config_e)}")
                 raise
@@ -143,38 +138,27 @@ class CStoreCrawler(BaseCrawler, StoreRepository):
             my_history = {}
             
             # 쿠폰 리스트 파싱
-            self.logger.log_info("[C 매장] _parse_available_coupons 호출 시작")
             try:
                 await self._parse_available_coupons(available_coupons)
-                self.logger.log_info("[C 매장] _parse_available_coupons 완료")
             except Exception as parse_e:
                 self.logger.log_error(ErrorCode.FAIL_PARSE, "사용가능쿠폰", f"사용 가능 쿠폰 파싱 실패: {str(parse_e)}")
-                # 계속 진행 (사용 가능 쿠폰 파싱 실패해도 히스토리는 파싱 시도)
             
             # 사용 이력 파싱 (C 매장 전용 로직)
-            self.logger.log_info("[C 매장] _parse_coupon_history_c_store 호출 시작")
             try:
                 await self._parse_coupon_history_c_store(total_history)
-                self.logger.log_info(f"[C 매장] _parse_coupon_history_c_store 호출 완료, total_history: {total_history}")
             except Exception as history_e:
                 self.logger.log_error(ErrorCode.FAIL_PARSE, "쿠폰이력", f"쿠폰 이력 파싱 실패: {str(history_e)}")
-                # 계속 진행 (이력 파싱 실패해도 결과는 반환)
             
-            self.logger.log_info("[C 매장] CouponHistory 객체 생성")
-            result = CouponHistory(
+            return CouponHistory(
                 store_id=self.store_id,
                 vehicle_id=vehicle.number,
                 my_history=my_history,
                 total_history=total_history,
                 available_coupons=available_coupons
             )
-            self.logger.log_info("[C 매장] get_coupon_history 완료")
-            return result
             
         except Exception as e:
             self.logger.log_error(ErrorCode.FAIL_PARSE, "쿠폰조회", str(e))
-            import traceback
-            self.logger.log_error(ErrorCode.FAIL_PARSE, "쿠폰조회상세", f"상세 오류: {traceback.format_exc()}")
             return self._empty_coupon_history(vehicle.number)
 
     async def apply_coupons(self, applications: List[CouponApplication]) -> bool:
@@ -377,7 +361,6 @@ class CStoreCrawler(BaseCrawler, StoreRepository):
                 try:
                     if await self.page.locator(selector).count() > 0:
                         await self.page.click(selector)
-                        self.logger.log_info(f"[성공] 검색 버튼 클릭: {selector}")
                         return True
                 except Exception:
                     continue
@@ -405,34 +388,25 @@ class CStoreCrawler(BaseCrawler, StoreRepository):
                 try:
                     table = self.page.locator(table_selector)
                     if await table.count() > 0:
-                        self.logger.log_info(f"[진행] 테이블 발견: {table_selector}")
-                        
                         # 테이블의 모든 행 검사 (UI 테스트와 동일)
                         rows = await table.locator('tbody tr').all()
                         if len(rows) == 0:
                             # tbody가 없는 경우 일반 tr 사용
                             rows = await table.locator('tr').all()
                         
-                        self.logger.log_info(f"[진행] 테이블 행 수: {len(rows)}")
-                        
                         for i, row in enumerate(rows):
                             try:
                                 row_text = await row.inner_text()
-                                self.logger.log_info(f"[진행] 행 {i+1}: {row_text[:50]}...")
                                 
                                 # 검색된 차량번호 패턴을 포함하는 행 찾기 (UI 테스트와 동일)
                                 if car_number in row_text or any(char.isdigit() for char in row_text):
-                                    self.logger.log_info(f"[성공] 검색 결과 발견 (행 {i+1}): {row_text}")
                                     
                                     # 행 클릭 시도 (onclick 핸들러가 있는 경우) - UI 테스트와 동일
                                     try:
                                         # 먼저 행 자체에 onclick이 있는지 확인
                                         onclick_attr = await row.get_attribute('onclick')
                                         if onclick_attr:
-                                            self.logger.log_info(f"[진행] onclick 핸들러 발견: {onclick_attr[:50]}...")
                                             await row.click()
-                                            self.logger.log_info(f"[성공] 차량 행 클릭 완료")
-                                            
                                             # 선택 후 대기
                                             await self.page.wait_for_timeout(2000)
                                             return True
@@ -442,8 +416,6 @@ class CStoreCrawler(BaseCrawler, StoreRepository):
                                             for cell in cells:
                                                 if await cell.count() > 0:
                                                     await cell.click()
-                                                    self.logger.log_info(f"[성공] 차량 셀 클릭 완료")
-                                                    
                                                     await self.page.wait_for_timeout(2000)
                                                     return True
                                                     
@@ -455,7 +427,6 @@ class CStoreCrawler(BaseCrawler, StoreRepository):
                                 self.logger.log_warning(f"[경고] 행 처리 중 오류: {str(row_error)}")
                                 continue
                         
-                        self.logger.log_warning(f"[경고] 테이블에서 검색 결과를 찾을 수 없음")
                         break
                         
                 except Exception:
@@ -470,24 +441,7 @@ class CStoreCrawler(BaseCrawler, StoreRepository):
 
     async def _debug_page_state(self):
         """디버깅을 위한 페이지 상태 출력"""
-        try:
-            self.logger.log_info(f"[디버그] 현재 URL: {self.page.url}")
-            
-            # 페이지의 모든 테이블 요소 확인
-            tables = await self.page.locator('table').all()
-            self.logger.log_info(f"[디버그] 페이지의 테이블 개수: {len(tables)}")
-            
-            # ID가 있는 요소들 확인
-            elements_with_id = await self.page.evaluate("""
-                () => {
-                    const elements = document.querySelectorAll('[id]');
-                    return Array.from(elements).slice(0, 20).map(el => el.id);
-                }
-            """)
-            self.logger.log_info(f"[디버그] ID가 있는 요소들(상위 20개): {elements_with_id}")
-            
-        except Exception as e:
-            self.logger.log_warning(f"[경고] 디버깅 정보 수집 실패: {str(e)}")
+        pass
 
 
     async def _safe_page_check(self) -> bool:
@@ -501,7 +455,6 @@ class CStoreCrawler(BaseCrawler, StoreRepository):
             # 2. URL 접근 가능성 확인
             try:
                 current_url = self.page.url
-                self.logger.log_info(f"현재 페이지 URL: {current_url}")
             except Exception as e:
                 self.logger.log_warning(f"페이지 상태 확인 실패: {str(e)}")
                 return False
@@ -545,27 +498,20 @@ class CStoreCrawler(BaseCrawler, StoreRepository):
             discount_selectors = coupon_config.get('discount_selectors', [])
             has_my_history = coupon_config.get('table_structure', {}).get('has_my_history', False)
             
-            self.logger.log_info(f"[C 매장] CommonCouponCalculator를 사용하여 쿠폰 파싱 시작")
-            self.logger.log_info(f"[C 매장] 쿠폰 매핑: {coupon_key_mapping}")
-            self.logger.log_info(f"[C 매장] 할인 셀렉터: {discount_selectors}")
-            self.logger.log_info(f"[C 매장] has_my_history: {has_my_history}")
             
             # 할인 내역 테이블이 로드될 때까지 대기
             try:
                 await self.page.wait_for_selector("tbody[id='discountlist']", timeout=5000)
-                self.logger.log_info("[C 매장] 할인 내역 테이블 로드 확인")
             except:
-                self.logger.log_warning("[C 매장] 할인 내역 테이블을 찾을 수 없음")
+                self.logger.log_warning("할인 내역 테이블을 찾을 수 없음")
             
             # 공통 유틸리티로 파싱 (C 매장은 my_history 사용 안함)
-            self.logger.log_info("[C 매장] CommonCouponCalculator.parse_applied_coupons 호출 시작")
             my_history, parsed_total_history = await CommonCouponCalculator.parse_applied_coupons(
                 self.page,
                 coupon_key_mapping,
                 discount_selectors,
                 has_my_history=has_my_history
             )
-            self.logger.log_info(f"[C 매장] CommonCouponCalculator.parse_applied_coupons 결과: my_history={my_history}, parsed_total_history={parsed_total_history}")
             
             # C 매장 특성: my_history는 항상 빈 딕셔너리, total_history만 사용
             total_history.clear()
@@ -573,12 +519,10 @@ class CStoreCrawler(BaseCrawler, StoreRepository):
             
             # CommonCouponCalculator가 실패했을 경우 C 매장 전용 로직 시도
             if not total_history:
-                self.logger.log_info("[C 매장] CommonCouponCalculator 결과가 비어있어 C 매장 전용 파싱 시도")
                 try:
                     # 할인내역 테이블에서 직접 파싱
                     for selector in discount_selectors:
                         if await self.page.locator(selector).count() > 0:
-                            self.logger.log_info(f"[C 매장] 직접 파싱 - 셀렉터: {selector}")
                             rows = await self.page.locator(selector).all()
                             
                             for idx, row in enumerate(rows):
@@ -590,14 +534,10 @@ class CStoreCrawler(BaseCrawler, StoreRepository):
                                             cell_text = await cell.inner_text()
                                             cell_texts.append(cell_text.strip())
                                         
-                                        self.logger.log_info(f"[C 매장] 행 {idx+1} 셀 내용: {' | '.join(cell_texts)}")
-                                        
                                         # C 매장 구조: 삭제 | 날짜 | 할인권명 | 수량
                                         if len(cell_texts) >= 4:
                                             coupon_name = cell_texts[2]  # 할인권명
                                             quantity_text = cell_texts[3]  # 수량
-                                            
-                                            self.logger.log_info(f"[C 매장] 쿠폰명: '{coupon_name}', 수량: '{quantity_text}'")
                                             
                                             # 수량 추출
                                             import re
@@ -608,23 +548,18 @@ class CStoreCrawler(BaseCrawler, StoreRepository):
                                             for mapped_name, coupon_key in coupon_key_mapping.items():
                                                 if mapped_name in coupon_name:
                                                     total_history[coupon_key] = total_history.get(coupon_key, 0) + quantity
-                                                    self.logger.log_info(f"[C 매장] 매핑 성공: {mapped_name} -> {coupon_key} ({quantity}개)")
                                                     break
-                                            else:
-                                                self.logger.log_warning(f"[C 매장] 매핑 실패: '{coupon_name}' - 알려진 쿠폰명과 일치하지 않음")
                                                 
                                 except Exception as row_e:
-                                    self.logger.log_warning(f"[C 매장] 행 처리 오류: {str(row_e)}")
                                     continue
                             break
                                     
                 except Exception as direct_e:
-                    self.logger.log_warning(f"[C 매장] 직접 파싱 실패: {str(direct_e)}")
+                    self.logger.log_warning(f"직접 파싱 실패: {str(direct_e)}")
             
-            self.logger.log_info(f"[C 매장] 파싱 완료 - total_history: {total_history}")
                 
         except Exception as e:
-            self.logger.log_error(ErrorCode.FAIL_PARSE, "C매장할인내역", f"쿠폰 이력 파싱 실패: {str(e)}")
+            self.logger.log_error(ErrorCode.FAIL_PARSE, "쿠폰이력파싱", str(e))
 
     async def cleanup(self) -> None:
         """리소스 정리"""

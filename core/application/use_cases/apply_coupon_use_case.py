@@ -88,6 +88,11 @@ class ApplyCouponUseCase:
                 self._discount_calculator.coupon_configs
             )
             
+            # C매장 특별 처리: my_history가 비어있는 경우 total_history를 사용
+            if request.store_id.upper() == 'C' and not my_history_by_key and total_history_by_key:
+                my_history_by_key = total_history_by_key.copy()
+                self._logger.debug(f"[{request.store_id}] C매장 특별처리: total_history를 my_history로 복사")
+            
             # 개발 환경에서만 변환된 이력 로그
             if os.getenv('ENVIRONMENT', 'development') != 'production':
                 self._logger.info(f"[{request.store_id}] 변환된 내 이력: {my_history_by_key}")

@@ -14,7 +14,7 @@ login:
 # 쿠폰 설정 (디스카운트 로직 문서 기준)
 coupons:
   FREE_2HOUR:
-    name: "무료 2시간할인"
+    name: "2시간 무료할인권"
     type: "FREE"  # 대문자 표준화
     duration_minutes: 120
     priority: 0
