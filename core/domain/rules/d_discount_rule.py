@@ -26,11 +26,11 @@ class DDiscountRule:
             config = yaml.safe_load(f)
         
         # DiscountPolicy 생성
-        policy_config = config.get('policy', {})
+        policy_config = config.get('discount_policy', {})
         self.policy = DiscountPolicy(
             store_id="D",
-            weekday_target_minutes=policy_config.get('weekday_target_minutes', 180),
-            weekend_target_minutes=policy_config.get('weekend_target_minutes', 120)
+            weekday_target_minutes=policy_config.get('weekday', {}).get('target_hours', 3) * 60,
+            weekend_target_minutes=policy_config.get('weekend', {}).get('target_hours', 2) * 60
         )
         
         # CouponConfig 리스트 생성
