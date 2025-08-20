@@ -31,8 +31,8 @@ class EStoreAutomationService:
         
         # E 매장 전용 할인 계산기 생성
         discount_policy = config_manager.get_discount_policy("E")
-        coupon_rules = config_manager.get_coupon_rules("E")
-        self._discount_calculator = EDiscountCalculator(discount_policy, coupon_rules)
+        coupon_configs = config_manager.get_coupon_configs("E")
+        self._discount_calculator = EDiscountCalculator(discount_policy, coupon_configs)
         
         # E 매장 크롤러 생성
         self._crawler = EStoreCrawler(

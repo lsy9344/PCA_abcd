@@ -2,15 +2,15 @@
 E 매장 전용 할인 계산기
 """
 from typing import Dict, List
-from .discount_policy import DiscountCalculator, DiscountPolicy, CouponRule
+from .discount_policy import DiscountCalculator, DiscountPolicy, CouponConfig
 from .coupon import CouponApplication, CouponType
 
 
 class EDiscountCalculator(DiscountCalculator):
     """E 매장 전용 할인 계산기 - 기본 규칙 적용"""
     
-    def __init__(self, policy: DiscountPolicy, coupon_rules: List[CouponRule]):
-        super().__init__(policy, coupon_rules)
+    def __init__(self, policy: DiscountPolicy, coupon_configs: List[CouponConfig]):
+        super().__init__(policy, coupon_configs)
     
     def calculate_required_coupons(self, 
                                  my_history: Dict[str, int],

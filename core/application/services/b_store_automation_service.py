@@ -31,8 +31,8 @@ class BStoreAutomationService:
         
         # B 매장 전용 할인 계산기 생성
         discount_policy = config_manager.get_discount_policy("B")
-        coupon_rules = config_manager.get_coupon_rules("B")
-        self._discount_calculator = BDiscountCalculator(discount_policy, coupon_rules)
+        coupon_configs = config_manager.get_coupon_configs("B")
+        self._discount_calculator = BDiscountCalculator(discount_policy, coupon_configs)
         
         # B 매장 크롤러 생성
         self._crawler = BStoreCrawler(

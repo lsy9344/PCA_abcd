@@ -14,7 +14,9 @@ from infrastructure.web_automation.store_crawlers.a_store_crawler import AStoreC
 from infrastructure.web_automation.store_crawlers.b_store_crawler import BStoreCrawler
 from infrastructure.web_automation.store_crawlers.c_store_crawler import CStoreCrawler
 from infrastructure.web_automation.store_crawlers.d_store_crawler import DStoreCrawler
+from infrastructure.web_automation.store_crawlers.e_store_crawler import EStoreCrawler
 from core.domain.models.b_discount_calculator import BDiscountCalculator
+from core.domain.models.e_discount_calculator import EDiscountCalculator
 from shared.exceptions.automation_exceptions import StoreNotSupportedException
 
 
@@ -59,20 +61,25 @@ class AutomationFactory:
             return CStoreCrawler(store_config, playwright_config, logger, notification_service)
         elif store_id.upper() == "D":
             return DStoreCrawler(store_config, playwright_config, logger, notification_service)
+        elif store_id.upper() == "E":
+            return EStoreCrawler(store_config, playwright_config, logger, notification_service)
         else:
             raise StoreNotSupportedException(f"지원하지 않는 매장입니다: {store_id}")    
 
     def create_discount_calculator(self, store_id: str) -> DiscountCalculator:
         """할인 계산기 생성"""
         discount_policy = self.config_manager.get_discount_policy(store_id)
-        coupon_rules = self.config_manager.get_coupon_rules(store_id)
+        coupon_configs = self.config_manager.get_coupon_configs(store_id)
         
         if store_id.upper() == "B":
             # B 매장은 30분 쿠폰 2배 보정 규칙 적용
-            return BDiscountCalculator(discount_policy, coupon_rules)
+            return BDiscountCalculator(discount_policy, coupon_configs)
+        elif store_id.upper() == "E":
+            # E 매장 전용 할인 계산기
+            return EDiscountCalculator(discount_policy, coupon_configs)
         else:
             # A 매장 및 기타 매장은 기본 계산기 사용
-            return DiscountCalculator(discount_policy, coupon_rules)
+            return DiscountCalculator(discount_policy, coupon_configs)
     
     def create_apply_coupon_use_case(self, store_id: str) -> ApplyCouponUseCase:
         """쿠폰 적용 유스케이스 생성"""

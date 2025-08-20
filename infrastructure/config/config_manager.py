@@ -7,7 +7,7 @@ from typing import Dict, Any
 from pathlib import Path
 
 from core.domain.models.store import StoreConfig
-from core.domain.models.discount_policy import DiscountPolicy, CouponRule
+from core.domain.models.discount_policy import DiscountPolicy, CouponRule, CouponConfig
 from core.domain.models.coupon import CouponType
 
 
@@ -93,10 +93,8 @@ class ConfigManager:
         
         return DiscountPolicy(
             store_id=store_id,
-            weekday_target_hours=policy_data['weekday']['target_hours'],
-            weekend_target_hours=policy_data['weekend']['target_hours'],
-            weekday_max_coupons=policy_data['weekday']['max_coupons'],
-            weekend_max_coupons=policy_data['weekend']['max_coupons']
+            weekday_target_minutes=policy_data['weekday']['target_hours'] * 60,
+            weekend_target_minutes=policy_data['weekend']['target_hours'] * 60
         )
     
     def get_coupon_rules(self, store_id: str) -> list[CouponRule]:
@@ -119,6 +117,25 @@ class ConfigManager:
             ))
         
         return rules
+    
+    def get_coupon_configs(self, store_id: str) -> list[CouponConfig]:
+        """쿠폰 설정 조회 (새로운 CouponConfig 형식)"""
+        config_path = self.config_dir / "store_configs" / f"{store_id.lower()}_store_config.yaml"
+        
+        with open(config_path, 'r', encoding='utf-8') as f:
+            config_data = yaml.safe_load(f)
+        
+        configs = []
+        for key, coupon_info in config_data['coupons'].items():
+            configs.append(CouponConfig(
+                coupon_key=key,
+                coupon_name=coupon_info['name'],
+                coupon_type=coupon_info['type'],
+                duration_minutes=coupon_info['duration_minutes'],
+                priority=coupon_info.get('priority', 0)
+            ))
+        
+        return configs
     
     def get_playwright_config(self) -> Dict[str, Any]:
         """Playwright 설정 조회"""
