@@ -64,4 +64,19 @@ class StructuredLogger:
     def debug(self, message: str, extra: Optional[Dict[str, Any]] = None):
         """디버그 로그"""
         formatted_message = self._format_message(message, extra)
-        self.logger.debug(formatted_message) 
+        self.logger.debug(formatted_message)
+    
+    def log_error(self, *args, **kwargs):
+        """에러 로그 - 기존 코드 호환성을 위한 메서드"""
+        if len(args) >= 3:
+            # 형식: log_error(error_code, step, message)
+            error_code, step, message = args[:3]
+            extra = kwargs.get('extra', {})
+            extra.update({'error_code': str(error_code), 'step': step})
+            self.error(message, extra)
+        elif len(args) == 1:
+            # 단순 메시지
+            self.error(args[0])
+        else:
+            # 기본 에러 처리
+            self.error(str(args)) 
