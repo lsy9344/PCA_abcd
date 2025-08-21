@@ -23,3 +23,9 @@ dateparser>=1.1.0
 
 
 aiohttp==3.9.1
+
+# 테스트 관련
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+pytest-mock>=3.11.0
+pytest-xdist>=3.3.0

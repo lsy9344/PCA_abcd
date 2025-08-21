@@ -57,12 +57,19 @@ selectors:
     no_result_message: 'text=검색된 차량이 없습니다'
     search_result_table: "#vehicleList"
   
-  # 쿠폰 관련
+  # 쿠폰 관련 (테스트로 검증된 셀렉터만 유지)
   coupons:
-    coupon_list: "#couponList"
-    coupon_rows: "#couponList tr"
-    apply_button: ".btn-apply"
-    discount_history: "#discountHistory"
+    # 보유 쿠폰 수량 파싱 (1단계에서 성공하는 핵심 셀렉터)
+    hour_coupon_count: "#mf_wfm_body_gen_dcTkList_0_discountTkRemainCnt.w2textbox"
+    min_coupon_count: "#mf_wfm_body_gen_dcTkList_1_discountTkRemainCnt.w2textbox"
+    
+    # 쿠폰 적용 버튼 (실제 동작 확인됨)
+    apply_hour_button: "#mf_wfm_body_gen_dcTkList_0_discountTkGrp[role='button']"
+    apply_min_button: "#mf_wfm_body_gen_dcTkList_1_discountTkGrp[role='button']"
+    
+    # 쿠폰 사용 이력 파싱 (YAML 기반으로 성공)
+    history_30min_group: "#mf_wfm_body_gen_usedDcTkGrpList_0_discountTkGrp"
+    history_1hour_group: "#mf_wfm_body_gen_usedDcTkGrpList_1_discountTkGrp"
     
   # 페이지 URL (추정)
   urls:

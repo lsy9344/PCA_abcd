@@ -34,7 +34,7 @@ class ApplyCouponUseCase:
         """쿠폰 적용 유스케이스 실행"""
         try:
             # 1. Store 인스턴스 생성
-            self._logger.info(
+            self._logger.log_info(
                 f"[{request.store_id}] 쿠폰 자동화 시작 - "
                 f"차량번호: {request.vehicle_number}, "
                 f"매장: {request.store_id}"
@@ -49,7 +49,7 @@ class ApplyCouponUseCase:
             # 로그인 성공 로그 제거 (크롤러에서 이미 처리)
 
             # 3. 차량 검색
-            vehicle = Vehicle(number=request.vehicle_number)
+            vehicle = Vehicle(number=request.vehicle_number, store_id=request.store_id)
             search_success = await store_instance.search_vehicle(vehicle)
             if not search_success:
                 raise Exception(f"차량 검색 실패: {request.vehicle_number}")
@@ -71,7 +71,7 @@ class ApplyCouponUseCase:
                 my_count = sum(my_history.values()) if my_history else 0
                 total_count = sum(total_history.values()) if total_history else 0
                 if my_count > 0 or total_count > 0:
-                    self._logger.info(f"[{request.store_id}] 쿠폰 이력: 우리 매장 {my_count}건, 전체 {total_count}건")
+                    self._logger.log_info(f"[{request.store_id}] 쿠폰 이력: 우리 매장 {my_count}건, 전체 {total_count}건")
 
             # 6. 사용 가능한 쿠폰 개수 계산
             available_coupons = {}
@@ -87,16 +87,16 @@ class ApplyCouponUseCase:
                 total_history, 
                 self._discount_calculator.coupon_configs
             )
-            
+
             # C매장 특별 처리: my_history가 비어있는 경우 total_history를 사용
             if request.store_id.upper() == 'C' and not my_history_by_key and total_history_by_key:
                 my_history_by_key = total_history_by_key.copy()
-                self._logger.debug(f"[{request.store_id}] C매장 특별처리: total_history를 my_history로 복사")
+                self._logger.log_info(f"[{request.store_id}] C매장 특별처리: total_history를 my_history로 복사")
             
             # 개발 환경에서만 변환된 이력 로그
             if os.getenv('ENVIRONMENT', 'development') != 'production':
-                self._logger.info(f"[{request.store_id}] 변환된 내 이력: {my_history_by_key}")
-                self._logger.info(f"[{request.store_id}] 변환된 전체 이력: {total_history_by_key}")
+                self._logger.log_info(f"[{request.store_id}] 변환된 내 이력: {my_history_by_key}")
+                self._logger.log_info(f"[{request.store_id}] 변환된 전체 이력: {total_history_by_key}")           
             
             # 할인 계산
             applications = self._discount_calculator.calculate_required_coupons(
@@ -109,28 +109,32 @@ class ApplyCouponUseCase:
             # 8. 쿠폰 적용 (적용할 쿠폰이 있는 경우에만 로그)
             actually_applied_coupons = []
             if applications:
-
-                # 쿠폰 적용 실행
-                apply_result = await store_instance.apply_coupons(applications)
-                
-                # apply_result가 리스트인 경우 (실제 적용된 쿠폰 목록)
-                if isinstance(apply_result, list):
-                    actually_applied_coupons = apply_result
-                # apply_result가 boolean인 경우
-                elif apply_result:
-                    # 성공한 경우 계산된 쿠폰을 적용된 것으로 간주
-                    actually_applied_coupons = [
-                        {app.coupon_name: app.count} for app in applications if app.count > 0
-                    ]
-                else:
-                    # 실패한 경우
-                    raise Exception("쿠폰 적용 실패")
+                try:
+                    # 쿠폰 적용 실행
+                    apply_result = await store_instance.apply_coupons(applications)
+                    
+                    # apply_result가 리스트인 경우 (실제 적용된 쿠폰 목록)
+                    if isinstance(apply_result, list):
+                        actually_applied_coupons = apply_result
+                    # apply_result가 boolean인 경우
+                    elif apply_result:
+                        # 성공한 경우 계산된 쿠폰을 적용된 것으로 간주
+                        actually_applied_coupons = [
+                            {app.coupon_name: app.count} for app in applications if app.count > 0
+                        ]
+                    else:
+                        # 실패한 경우
+                        raise Exception("쿠폰 적용 실패")
+                        
+                except Exception as apply_error:
+                    self._logger.log_error("쿠폰적용", "쿠폰적용", f"[{request.store_id}] 쿠폰 적용 중 오류: {str(apply_error)}")
+                    raise Exception(f"쿠폰 적용 실패: {str(apply_error)}")
             else:
-                self._logger.info(f"[{request.store_id}][쿠폰적용] 적용할 쿠폰이 없습니다")
+                self._logger.log_info(f"[{request.store_id}][쿠폰적용] 적용할 쿠폰이 없습니다")
 
             # 9. 성공 응답 생성
             # 성공 로그 간소화
-            self._logger.info(
+            self._logger.log_info(
                 f"[{request.store_id}] 쿠폰 자동화 완료 - "
                 f"차량: {request.vehicle_number}, "
                 f"적용: {len([app for app in applications if app.count > 0])}종류"
@@ -176,7 +180,7 @@ class ApplyCouponUseCase:
         
         # 모든 키가 이미 coupon_key 형태인 경우 변환 없이 반환
         if history_keys.issubset(config_keys):
-            self._logger.debug(f"이력이 이미 coupon_key 형태임: {history_by_name}")
+            self._logger.log_info(f"이력이 이미 coupon_key 형태임: {history_by_name}")
             return history_by_name
         
         # coupon_name 형태인 경우 변환
@@ -213,14 +217,10 @@ class ApplyCouponUseCase:
     
     async def _handle_error(self, error_context: ErrorContext) -> None:
         """에러 처리"""
-        self._logger.error(
-            f"[{error_context.store_id}] 자동화 실패: {error_context.error_message}",
-            extra={
-                "store_id": error_context.store_id,
-                "vehicle": error_context.vehicle_number,
-                "step": error_context.error_step,
-                "stack_trace": error_context.stack_trace
-            }
+        self._logger.log_error(
+            error_context.error_step,
+            "자동화실패",
+            f"[{error_context.store_id}] 자동화 실패: {error_context.error_message}"
         )
         
         await self._notification_service.send_error_notification(error_context) 
