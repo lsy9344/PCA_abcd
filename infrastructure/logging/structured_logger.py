@@ -79,4 +79,8 @@ class StructuredLogger:
             self.error(args[0])
         else:
             # 기본 에러 처리
-            self.error(str(args)) 
+            self.error(str(args))
+    
+    def log_info(self, message: str, extra: Optional[Dict[str, Any]] = None):
+        """정보 로그 - 기존 코드 호환성을 위한 메서드"""
+        self.info(message, extra) 
