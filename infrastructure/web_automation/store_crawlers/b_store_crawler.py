@@ -66,14 +66,6 @@ class BStoreCrawler(BaseCrawler, StoreRepository):
             # [수정] 차량 검색을 시작하기 전에, 검색 기능의 일부인 체크박스 상태를 먼저 확인합니다.
             await self._ensure_search_state_checkbox(self.page)
 
-            # [추가] 입차일 설정 (test_b_store_ui_2.py와 동일한 로직)
-            entry_date = "2025-07-01"  # 테스트 파일과 동일한 고정값
-            try:
-                entry_date_input = self.page.locator("input[name='entryDate']")
-                await entry_date_input.fill(entry_date)
-                self.logger.log_info(f"[성공] 입차일 설정 완료: {entry_date}")
-            except Exception as e:
-                self.logger.log_warning(f"[경고] 입차일 설정 실패 (계속 진행): {str(e)}")
 
             car_number = vehicle.number
             
