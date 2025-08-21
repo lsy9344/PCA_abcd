@@ -63,12 +63,25 @@ class DStoreAutomationService:
             # 4. 쿠폰 이력 조회 (공통 로직 사용)
             coupon_history = await self._crawler.get_coupon_history(vehicle)
             
+            # 디버그: 크롤러에서 받은 데이터 상세 로깅
+            self._logger.log_info("🔍 [자동화 서비스] 크롤러에서 받은 쿠폰 이력 데이터:")
+            self._logger.log_info(f"   📋 my_history: {coupon_history.my_history}")
+            self._logger.log_info(f"   📋 total_history: {coupon_history.total_history}")
+            self._logger.log_info(f"   📋 available_coupons: {coupon_history.available_coupons}")
+            
+            # 디버그: 할인 규칙에 전달할 데이터 확인
+            extracted_counts = self._extract_available_counts(coupon_history.available_coupons)
+            self._logger.log_info(f"   📊 extracted_counts: {extracted_counts}")
+            
             # 5. D 매장 할인 규칙으로 쿠폰 계산 (동적 계산 알고리즘)
+            self._logger.log_info("🧮 [자동화 서비스] D 매장 할인 규칙 계산 시작...")
             coupon_decisions = self._discount_rule.decide_coupon_to_apply(
                 my_history=coupon_history.my_history,
                 total_history=coupon_history.total_history,
-                discount_info=self._extract_available_counts(coupon_history.available_coupons)
+                discount_info=extracted_counts
             )
+            
+            self._logger.log_info(f"📤 [자동화 서비스] 할인 규칙 계산 결과: {coupon_decisions}")
             
             # 6. 쿠폰 적용 요청 생성
             applications = self._create_coupon_applications(coupon_decisions)

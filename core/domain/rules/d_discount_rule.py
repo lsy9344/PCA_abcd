@@ -131,15 +131,25 @@ class DDiscountRule:
                 # 무료 쿠폰 사용 가능 조건 확인
                 total_free_used = total_history.get(free_config.coupon_name, 0)
                 my_free_used = my_history.get(free_config.coupon_name, 0)
-                available_free = discount_info.get(free_config.coupon_name, 0)
+                # discount_info가 dict 구조일 경우 처리
+                coupon_data = discount_info.get(free_config.coupon_name, 0)
+                if isinstance(coupon_data, dict):
+                    available_free = max(coupon_data.get('car', 0), coupon_data.get('total', 0))
+                else:
+                    available_free = coupon_data
                 
+                # 룰 파일 원칙: 이미 무료 쿠폰을 사용했다면 추가 적용 불가
                 can_apply_free = (total_free_used == 0 and my_free_used == 0 and available_free > 0 
                                 and remaining_minutes >= free_config.duration_minutes)
+                
+                self.logger.info(f"[D 매장] 무료 쿠폰 조건 체크: 전체사용={total_free_used}, 내사용={my_free_used}, 보유={available_free}, 남은시간={remaining_minutes}분")
                 
                 if can_apply_free:
                     result['FREE_1HOUR'] = 1
                     remaining_minutes -= free_config.duration_minutes
                     self.logger.info(f"[D 매장] 무료 쿠폰 적용: {free_config.coupon_name} 1개 ({free_config.duration_minutes}분)")
+                else:
+                    self.logger.info(f"[D 매장] 무료 쿠폰 적용 불가 - 이미 사용됨 또는 조건 미충족")
             
             # 4단계: 유료 쿠폰으로 부족분 채우기
             if remaining_minutes > 0:
@@ -149,12 +159,21 @@ class DDiscountRule:
                 if paid_configs:
                     # 가장 우선순위 높은 유료 쿠폰 선택
                     paid_config = sorted(paid_configs, key=lambda x: x.priority)[0]
-                    available_paid = discount_info.get(paid_config.coupon_name, 0)
+                    # discount_info가 dict 구조일 경우 처리
+                    coupon_data = discount_info.get(paid_config.coupon_name, 0)
+                    if isinstance(coupon_data, dict):
+                        available_paid = max(coupon_data.get('car', 0), coupon_data.get('total', 0))
+                    else:
+                        available_paid = coupon_data
+                    
+                    self.logger.info(f"[D 매장] 유료 쿠폰 정보: {paid_config.coupon_name}, 보유={available_paid}개, duration={paid_config.duration_minutes}분")
                     
                     if available_paid > 0:
                         # D 매장 특징: 30분 단위 쿠폰 - math.ceil로 올림 처리
                         needed_paid = math.ceil(remaining_minutes / paid_config.duration_minutes)
                         actual_paid = min(needed_paid, available_paid)
+                        
+                        self.logger.info(f"[D 매장] 유료 쿠폰 계산: {remaining_minutes}분 ÷ {paid_config.duration_minutes}분 = {needed_paid}개 필요, 실제 적용={actual_paid}개")
                         
                         if actual_paid > 0:
                             result['PAID_30MIN'] = actual_paid
@@ -162,6 +181,8 @@ class DDiscountRule:
                             remaining_minutes = max(0, remaining_minutes - applied_minutes)
                             
                             self.logger.info(f"[D 매장] 유료 쿠폰 적용: {paid_config.coupon_name} {actual_paid}개 ({applied_minutes}분)")
+                    else:
+                        self.logger.info(f"[D 매장] 유료 쿠폰 보유량 부족: {available_paid}개")
             
             # 5단계: 최종 검증 및 결과 로깅
             total_apply_minutes = 0

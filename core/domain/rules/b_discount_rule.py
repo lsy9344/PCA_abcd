@@ -104,7 +104,12 @@ class BDiscountRule:
             for coupon_key, count in applications_dict.items():
                 config = next((c for c in self.coupon_configs if c.coupon_key == coupon_key), None)
                 if config:
-                    available = discount_info.get(config.coupon_name, 0)
+                    # discount_info가 dict 구조일 경우 처리 (호환성)
+                    coupon_data = discount_info.get(config.coupon_name, 0)
+                    if isinstance(coupon_data, dict):
+                        available = max(coupon_data.get('car', 0), coupon_data.get('total', 0))
+                    else:
+                        available = coupon_data
                     actual_count = min(count, available)
                     if actual_count > 0:
                         final_applications[coupon_key] = actual_count

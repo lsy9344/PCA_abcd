@@ -1,0 +1,234 @@
+---
+title: "데이터 구조 호환성 및 안전한 처리"
+order: 16
+category: "implementation"
+alwaysApply: true
+tags: ["data", "compatibility", "error-prevention", "robustness"]
+lastUpdated: "2024-08-21"
+description: "크롤러와 비즈니스 로직 간 데이터 구조 호환성 처리 규칙"
+---
+
+# 데이터 구조 호환성 처리 규칙
+
+크롤러에서 반환되는 데이터 구조와 비즈니스 로직에서 기대하는 데이터 구조가 다를 수 있습니다.  
+이로 인한 런타임 에러를 방지하기 위한 방어적 코딩 규칙을 정의합니다.
+
+---
+
+## [핵심 원칙]
+
+### 1. 방어적 데이터 처리
+**모든 외부 데이터(크롤러, API 응답 등)는 예상 타입이 아닐 수 있다고 가정하고 처리한다.**
+
+### 2. 타입 안전성
+**데이터 사용 전 반드시 타입 검사를 수행한다.**
+
+### 3. 호환성 유지
+**기존 데이터 구조와의 호환성을 유지하면서 새로운 구조도 지원한다.**
+
+---
+
+## [문제 사례 - D매장 available_coupons 타입 불일치]
+
+### 발생한 문제
+```python
+# 크롤러에서 반환하는 구조
+available_coupons = {
+    "1시간 무료": {"car": 3, "total": 3},
+    "30분 유료": {"car": 10, "total": 10}
+}
+
+# 비즈니스 로직에서 기대하는 구조
+available_coupons = {
+    "1시간 무료": 3,
+    "30분 유료": 10
+}
+
+# 결과: TypeError: '>' not supported between instances of 'dict' and 'int'
+```
+
+### 해결 방법
+```python
+# ✅ 방어적 처리
+coupon_data = discount_info.get(coupon_name, 0)
+if isinstance(coupon_data, dict):
+    available_count = max(coupon_data.get('car', 0), coupon_data.get('total', 0))
+else:
+    available_count = coupon_data
+
+# 이제 both structures 지원
+```
+
+---
+
+## [필수 적용 패턴]
+
+### 1. 쿠폰 데이터 처리 패턴
+```python
+def safe_get_coupon_count(discount_info: Dict, coupon_name: str) -> int:
+    """안전한 쿠폰 개수 추출"""
+    coupon_data = discount_info.get(coupon_name, 0)
+    
+    if isinstance(coupon_data, dict):
+        # 새로운 구조: {"car": N, "total": M}
+        return max(coupon_data.get('car', 0), coupon_data.get('total', 0))
+    elif isinstance(coupon_data, int):
+        # 기존 구조: N
+        return coupon_data
+    else:
+        # 예상치 못한 타입
+        return 0
+```
+
+### 2. 리스트/딕셔너리 안전 접근
+```python
+# ❌ 위험한 접근
+value = data['key']  # KeyError 가능
+count = data.get('items')[0]  # TypeError 가능
+
+# ✅ 안전한 접근
+value = data.get('key', default_value)
+items = data.get('items', [])
+count = items[0] if items else 0
+```
+
+### 3. 타입 변환 안전성
+```python
+# ❌ 위험한 변환
+count = int(raw_value)  # ValueError 가능
+
+# ✅ 안전한 변환
+try:
+    count = int(raw_value)
+except (ValueError, TypeError):
+    count = 0
+    logger.warning(f"Invalid count value: {raw_value}")
+```
+
+---
+
+## [매장별 특수 케이스 처리]
+
+### D매장 - available_coupons 이중 구조
+```python
+# D매장 크롤러는 detailed structure 반환
+available_coupons = {
+    "1시간 무료": {"car": 3, "total": 3},
+    "30분 유료": {"car": 10, "total": 10}
+}
+
+# 할인 규칙에서는 simple structure 기대
+# → 양쪽 모두 지원하도록 방어적 처리 필수
+```
+
+### 다른 매장 - 단순 구조
+```python
+# A, B, C 매장은 simple structure
+available_coupons = {
+    "무료쿠폰": 5,
+    "유료쿠폰": 10
+}
+```
+
+---
+
+## [강제 적용 규칙]
+
+### 1. 외부 데이터 접근 시 필수 체크리스트
+- [ ] `isinstance()` 타입 체크 수행
+- [ ] `.get()` 메서드로 안전한 딕셔너리 접근
+- [ ] 기본값(default) 설정
+- [ ] 예외 상황 로깅
+
+### 2. 비즈니스 로직 진입점에서
+```python
+def process_coupon_data(discount_info: Dict) -> Dict:
+    """
+    REQUIRED: 모든 쿠폰 처리 함수는 이 패턴을 따라야 함
+    """
+    # 1. 입력 데이터 검증
+    if not isinstance(discount_info, dict):
+        logger.error(f"Invalid discount_info type: {type(discount_info)}")
+        return {}
+    
+    # 2. 각 쿠폰별 안전한 처리
+    result = {}
+    for coupon_name, coupon_data in discount_info.items():
+        result[coupon_name] = safe_get_coupon_count(discount_info, coupon_name)
+    
+    return result
+```
+
+### 3. 크롤러 응답 처리 시
+```python
+async def get_coupon_history(self, vehicle):
+    try:
+        # 크롤링 수행
+        raw_data = await self._crawl_coupon_data()
+        
+        # 데이터 구조 정규화
+        normalized_data = self._normalize_coupon_data(raw_data)
+        
+        return CouponHistory(
+            available_coupons=normalized_data
+        )
+    except Exception as e:
+        # 실패 시 안전한 기본값 반환
+        return CouponHistory(
+            available_coupons={}
+        )
+```
+
+---
+
+## [테스트 가이드라인]
+
+### 1. 다양한 데이터 구조로 테스트
+```python
+test_cases = [
+    # 기존 구조
+    {"1시간 무료": 3, "30분 유료": 10},
+    
+    # 새로운 구조  
+    {"1시간 무료": {"car": 3, "total": 3}},
+    
+    # 혼합 구조
+    {"1시간 무료": 3, "30분 유료": {"car": 10, "total": 10}},
+    
+    # 비정상 구조
+    {"1시간 무료": None, "30분 유료": "invalid"},
+    
+    # 빈 데이터
+    {},
+    None
+]
+```
+
+### 2. 에러 상황 시뮬레이션
+- 네트워크 실패로 인한 빈 데이터
+- 웹사이트 구조 변경으로 인한 파싱 실패
+- 예상치 못한 데이터 타입 반환
+
+---
+
+## [주의사항]
+
+### 1. 성능 vs 안전성
+타입 체크는 성능 오버헤드가 있지만, 운영 안정성을 위해 필수입니다.
+
+### 2. 로깅 적절성
+모든 타입 불일치를 로깅하면 로그가 너무 많아질 수 있습니다.  
+중요한 경우만 WARNING 레벨로 로깅하세요.
+
+### 3. 기본값 설정
+```python
+# ✅ 적절한 기본값
+count = data.get('count', 0)  # 숫자는 0
+names = data.get('names', [])  # 리스트는 빈 리스트  
+info = data.get('info', {})    # 딕셔너리는 빈 딕셔너리
+```
+
+---
+
+**이 규칙은 모든 매장의 크롤러와 비즈니스 로직에 적용되어야 하며,  
+새로운 매장 추가 시에도 반드시 고려해야 합니다.**

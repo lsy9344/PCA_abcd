@@ -1,187 +1,147 @@
-# PCA_abcd Project - Qwen Code Context
+# 주차 쿠폰 자동화 시스템 (PCA_abcd) - Qwen Code Context
 
-## Project Overview
+## 프로젝트 개요
 
-This is a parking coupon automation system that automatically logs into parking websites, searches for vehicles by license plate number, and applies optimal discount coupons based on each store's policies. The system is built using Clean Architecture principles with a strong emphasis on domain-driven design and separation of concerns.
+이 시스템은 주차 정산 웹사이트에 자동으로 로그인하여 차량번호로 할인 대상 차량을 조회하고, 각 매장의 정책에 맞는 최적의 할인 쿠폰을 적용하는 자동화 시스템입니다. 총 5개의 매장(A, B, C, D, E)을 지원하며, Clean Architecture 원칙을 기반으로 설계되어 확장성과 유지보수성이 뛰어납니다.
 
-### Key Features
-- **Multi-store Support**: Currently supports 4 different parking stores (A, B, C, D)
-- **Web Automation**: Uses Playwright for browser automation to interact with parking websites
-- **Dynamic Coupon Calculation**: Applies optimal coupons based on target discount hours and available coupons
-- **Lambda Deployment**: Designed for AWS Lambda deployment with containerized environment
-- **Structured Logging**: Uses JSON-formatted logging for better monitoring and debugging
-- **Telegram Notifications**: Sends alerts for failures and important events
+### 주요 특징
+- **멀티 매장 지원**: 5개의 서로 다른 주차 매장(A, B, C, D, E) 지원
+- **웹 자동화**: Playwright를 사용한 브라우저 자동화
+- **동적 쿠폰 계산**: 각 매장의 정책에 따른 최적의 쿠폰 자동 계산
+- **AWS Lambda 배포**: 컨테이너화된 Lambda 환경에 최적화
+- **구조화된 로깅**: JSON 형식의 구조화된 로깅 시스템
+- **텔레그램 알림**: 실패 시 자동 텔레그램 알림
 
-## Architecture
+## 아키텍처
 
-The project follows Clean Architecture with these main layers:
+### 클린 아키텍처 구조
 
 ```
 parking_automation/
-├── core/                           # Core domain logic
-│   ├── domain/                     # Domain layer (models, repositories)
-│   └── application/                # Application layer (use cases, DTOs)
-├── infrastructure/                 # Infrastructure layer
-│   ├── config/                     # Configuration management
-│   ├── web_automation/             # Web automation (Playwright)
-│   ├── notifications/              # Notification system
-│   ├── logging/                    # Logging system
-│   └── factories/                  # Factory patterns
-├── interfaces/                     # Interface layer
-│   └── api/                        # API endpoints (Lambda)
-├── shared/                         # Shared components
-│   ├── exceptions/                 # Custom exceptions
-│   └── utils/                      # Utilities
-└── stores/                         # Store-specific routing
+├── core/                           # 핵심 도메인 로직
+│   ├── domain/                     # 도메인 계층
+│   │   ├── models/                 # 도메인 모델 (Vehicle, Coupon, Store 등)
+│   │   ├── repositories/           # 리포지토리 인터페이스
+│   │   └── rules/                  # 할인 규칙
+│   └── application/                # 애플리케이션 계층
+│       ├── use_cases/              # 유스케이스 (ApplyCouponUseCase)
+│       └── dto/                    # 데이터 전송 객체
+├── infrastructure/                 # 인프라스트럭처 계층
+│   ├── config/                     # 설정 관리
+│   ├── web_automation/             # 웹 자동화 (Playwright)
+│   │   └── store_crawlers/         # 매장별 크롤러 구현
+│   ├── notifications/              # 알림 시스템
+│   ├── logging/                    # 로깅 시스템
+│   └── factories/                  # 팩토리 패턴
+├── interfaces/                     # 인터페이스 계층
+│   └── api/                        # API 엔드포인트 (Lambda)
+├── shared/                         # 공유 컴포넌트
+│   ├── exceptions/                 # 커스텀 예외
+│   └── utils/                      # 유틸리티
+├── stores/                         # 매장 라우팅
+└── tests/                          # 테스트
 ```
 
-### Core Components
+### 주요 기술 스택
+- **Python 3.12**: 주요 프로그래밍 언어
+- **Playwright**: 웹 자동화 프레임워크
+- **AWS Lambda**: 서버리스 배포 대상
+- **PyYAML**: 설정 관리
+- **Loguru**: 구조화된 로깅
+- **Docker**: 컨테이너화
 
-1. **Domain Layer**: Contains core business models like Store, Coupon, Vehicle, and repository interfaces
-2. **Application Layer**: Contains use cases like ApplyCouponUseCase that orchestrate business logic
-3. **Infrastructure Layer**: Implements concrete adapters for web automation, notifications, logging, etc.
-4. **Interfaces Layer**: Provides entry points (Lambda handlers) for the application
+## 핵심 구성 요소
 
-## Key Technologies
+### 1. 도메인 모델 (core/domain/models/)
+- **Vehicle**: 차량 정보 모델
+- **Coupon**: 쿠폰 엔티티 (FREE, PAID, WEEKEND 타입)
+- **Store**: 매장 설정 및 정책
+- **DiscountPolicy**: 할인 정책 및 동적 계산 알고리즘
 
-- **Python 3.12**: Primary programming language
-- **Playwright**: Web automation framework for browser interactions
-- **AWS Lambda**: Serverless deployment target
-- **PyYAML**: Configuration management
-- **Loguru**: Structured logging
-- **Docker**: Containerization for consistent deployment
+### 2. 웹 자동화 (infrastructure/web_automation/)
+- **BaseCrawler**: 모든 매장 크롤러의 베이스 클래스
+- **StoreCrawlers**: 매장별 구현 (AStoreCrawler, BStoreCrawler 등)
+- **각 매장 크롤러 주요 메서드**:
+  - `login()`: 웹사이트 로그인
+  - `search_vehicle()`: 차량 검색
+  - `get_coupon_history()`: 쿠폰 이력 조회
+  - `apply_coupons()`: 쿠폰 적용
+  - `cleanup()`: 브라우저 리소스 정리
 
-## Configuration Structure
+### 3. 설정 관리 (infrastructure/config/)
+- **ConfigManager**: 설정 파일 로딩 및 관리
+- **매장별 설정 파일**: `infrastructure/config/store_configs/{a-e}_store_config.yaml`
+- **설정 항목**:
+  - 매장 기본 정보 (ID, 이름, 웹사이트 URL)
+  - 로그인 정보 (사용자명, 비밀번호)
+  - 쿠폰 설정 (타입, 시간, 우선순위)
+  - 할인 정책 (평일/주말 목표 시간)
+  - 웹 셀렉터 (로그인, 검색, 쿠폰 관련 요소 선택자)
 
-Each store has its own YAML configuration file in `infrastructure/config/store_configs/`:
+### 4. 애플리케이션 계층 (core/application/)
+- **ApplyCouponUseCase**: 주요 비즈니스 로직
+  1. 로그인
+  2. 차량 검색
+  3. 쿠폰 이력 조회
+  4. 할인 계산
+  5. 쿠폰 적용
 
-- `a_store_config.yaml`: Configuration for Store A (동탄점)
-- `b_store_config.yaml`: Configuration for Store B
-- `c_store_config.yaml`: Configuration for Store C
-- `d_store_config.yaml`: Configuration for Store D
+### 5. 팩토리 패턴 (infrastructure/factories/)
+- **AutomationFactory**: 컴포넌트 생성 팩토리
+  - Logger, NotificationService, StoreRepository, DiscountCalculator 생성
 
-Configuration includes:
-- Store credentials and URLs
-- Coupon definitions and selectors
-- Web element selectors for automation
-- Discount policies for weekdays/weekends
+## 주요 워크플로우
 
-## Main Entry Points
+1. **Lambda 요청 수신**: `lambda_handler`에서 요청 파라미터 파싱
+2. **팩토리 생성**: `AutomationFactory`를 통해 필요한 컴포넌트 생성
+3. **유스케이스 실행**: `ApplyCouponUseCase.execute()` 호출
+4. **웹 자동화**: 매장별 크롤러를 통한 실제 웹사이트 조작
+5. **쿠폰 계산**: `DiscountCalculator`를 통한 최적 쿠폰 계산
+6. **쿠폰 적용**: 계산된 쿠폰을 웹사이트에 적용
+7. **결과 반환**: 성공/실패 여부와 함께 응답 반환
 
-### Lambda Handler
-- `interfaces/api/lambda_handler.py`: Main AWS Lambda entry point
-- Accepts `store_id` and `vehicle_number` parameters
-- Routes to appropriate store crawler based on store ID
+## 배포 구조
 
-### Store-Specific Lambda Files
-- `interfaces/api/lambda_a.py`: Lambda handler for Store A
-- `interfaces/api/lambda_b.py`: Lambda handler for Store B
-- `interfaces/api/lambda_c.py`: Lambda handler for Store C
-- `interfaces/api/lambda_d.py`: Lambda handler for Store D
+### Docker 컨테이너
+- **베이스 이미지**: AWS Lambda Python 3.12
+- **시스템 라이브러리**: Playwright 실행을 위한 최소한의 라이브러리
+- **Playwright 브라우저**: Chromium 브라우저 설치
+- **Lambda 핸들러**: `interfaces.api.lambda_handler.lambda_handler`
 
-## Key Classes and Components
+### Lambda 함수
+- 각 매장별로 독립된 Lambda 함수 존재 (lambda_a.py, lambda_b.py 등)
+- 공통 엔트리포인트: `lambda_handler.py`
 
-### AutomationFactory
-Located in `infrastructure/factories/automation_factory.py`:
-- Creates all components needed for automation
-- Manages singleton instances of loggers and notification services
-- Instantiates store-specific crawlers based on store ID
+## 개발 및 테스트
 
-### Store Crawlers
-Located in `infrastructure/web_automation/store_crawlers/`:
-- `AStoreCrawler`: Implements web automation for Store A
-- `BStoreCrawler`: Implements web automation for Store B
-- `CStoreCrawler`: Implements web automation for Store C
-- `DStoreCrawler`: Implements web automation for Store D
+### 개발 환경 설정
+1. 의존성 설치: `pip install -r requirements.txt`
+2. Playwright 브라우저 설치: `playwright install chromium`
 
-Each crawler implements:
-- `login()`: Authenticates to the parking website
-- `search_vehicle()`: Searches for a vehicle by license plate
-- `get_coupon_history()`: Retrieves available coupons and usage history
-- `apply_coupons()`: Applies calculated coupons to the vehicle
-- `cleanup()`: Cleans up browser resources
+### 테스트 실행
+- 빠른 테스트: `python tests/e2e/quick_d_store_test.py`
+- 인터랙티브 테스트: `python tests/e2e/run_d_store_crawler_direct.py`
+- 전체 E2E 테스트: `run_d_store_tests.sh`
 
-### DiscountCalculator
-Located in `core/domain/models/discount_policy.py`:
-- Calculates optimal coupon combinations based on target discount hours
-- Considers existing coupon usage history
-- Applies different strategies for weekdays vs weekends
+### 설정 파일
+각 매장은 독립된 YAML 설정 파일을 사용:
+- `infrastructure/config/store_configs/a_store_config.yaml`
+- `infrastructure/config/store_configs/b_store_config.yaml`
+- `infrastructure/config/store_configs/c_store_config.yaml`
+- `infrastructure/config/store_configs/d_store_config.yaml`
+- `infrastructure/config/store_configs/e_store_config.yaml`
 
-### ConfigManager
-Located in `infrastructure/config/config_manager.py`:
-- Loads and manages all configuration files
-- Provides store-specific configurations
-- Manages Playwright, Telegram, and logging configurations
+## 새로운 매장 추가 방법
 
-## Deployment Process
+1. **설정 파일 생성**: `infrastructure/config/store_configs/{new}_store_config.yaml`
+2. **크롤러 구현**: `infrastructure/web_automation/store_crawlers/{new}_store_crawler.py`
+3. **라우팅 등록**: `stores/store_router.py`에 새 매장 추가
+4. **Lambda 핸들러 생성**: `interfaces/api/lambda_{new}.py`
+5. **팩토리 등록**: `infrastructure/factories/automation_factory.py`에 새 매장 추가
+6. **테스트 작성**: 새 매장에 대한 테스트 케이스 작성
 
-### Docker Deployment
-The project includes a Dockerfile that:
-1. Uses AWS Lambda Python 3.12 base image
-2. Installs required system libraries for Playwright
-3. Installs Python dependencies
-4. Installs Playwright Chromium browser
-5. Copies application code
-6. Sets up Lambda handler
+## 성능 최적화
 
-### Lambda Deployment
-- Each store has its own Lambda function for independent scaling
-- Lambda handler routes requests to appropriate store crawler
-- Environment is containerized for consistency
-
-## Development Setup
-
-### Prerequisites
-1. Python 3.12
-2. Playwright dependencies
-
-### Installation Steps
-1. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-2. Install Playwright browsers:
-   ```bash
-   playwright install chromium
-   ```
-
-### Testing
-Unit and integration tests are located in the `tests/` directory:
-```bash
-# Run all tests
-python -m pytest
-
-# Run unit tests only
-python -m pytest tests/unit/
-
-# Run integration tests only
-python -m pytest tests/integration/
-```
-
-## Adding New Stores
-
-To add a new store (e.g., Store E):
-
-1. Create configuration file: `infrastructure/config/store_configs/e_store_config.yaml`
-2. Implement crawler: `infrastructure/web_automation/store_crawlers/e_store_crawler.py`
-3. Add to store router: Update `stores/store_router.py` with new store mapping
-4. Create Lambda handler: `interfaces/api/lambda_e.py`
-5. Add to factory: Update `infrastructure/factories/automation_factory.py`
-6. Write tests: Create test cases in `tests/` directory
-
-## Error Handling and Logging
-
-The system uses structured logging with different error codes:
-- `FAIL_AUTH`: Authentication failures
-- `NO_VEHICLE`: Vehicle not found
-- `FAIL_SEARCH`: Search failures
-- `FAIL_PARSE`: Parsing failures
-- `FAIL_APPLY`: Coupon application failures
-
-Logs are formatted as JSON for better parsing and monitoring. Telegram notifications are sent for critical failures.
-
-## Performance Considerations
-
-- Browser instances are reused within Lambda containers for better performance
-- Settings and logger instances are cached
-- CloudWatch logging costs are optimized by reducing verbose logging in production
+- **브라우저 재사용**: Lambda 컨테이너 재사용 시 브라우저 인스턴스 공유
+- **설정 캐싱**: 설정 파일 및 로거 인스턴스 캐싱
+- **Lambda 최적화**: 컨테이너 재사용을 위한 싱글톤 패턴 적용
