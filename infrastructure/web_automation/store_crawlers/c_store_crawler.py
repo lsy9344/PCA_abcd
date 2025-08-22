@@ -447,9 +447,14 @@ class CStoreCrawler(BaseCrawler, StoreRepository):
                 except Exception:
                     self.logger.log_warning(f"[경고] {coupon_name} 링크 상태 확인 실패 - 계속 진행")
                 
-                # 짧은 타임아웃으로 링크 클릭 (30초 → 5초)
+                # 쿠폰 타입별 차별화된 타임아웃 적용
+                # 유료 쿠폰: 10초 (서버 응답이 더 오래 걸림), 무료 쿠폰: 5초
+                timeout_ms = 10000 if '유료' in coupon_name else 5000
+                expected_time = "5-10초" if '유료' in coupon_name else "2-5초"
+                self.logger.log_info(f"[정보] {coupon_name} 예상 응답 시간: {expected_time}")
+                
                 try:
-                    await link_element.click(timeout=5000)
+                    await link_element.click(timeout=timeout_ms)
                     click_time = time.time() - start_time
                     self.logger.log_info(f"[성공] {coupon_name} 링크 클릭 완료 (응답시간: {click_time:.2f}초)")
                     
@@ -465,9 +470,10 @@ class CStoreCrawler(BaseCrawler, StoreRepository):
                     click_time = time.time() - start_time
                     error_msg = str(click_error)
                     
-                    # 타임아웃의 경우 별도 처리
+                    # 타임아웃의 경우 별도 처리 - 쿠폰 타입별 메시지 개선
                     if "Timeout" in error_msg:
-                        self.logger.log_warning(f"[경고] {coupon_name} 링크 클릭 타임아웃 (응답시간: {click_time:.2f}초): {error_msg}")
+                        timeout_info = f"{timeout_ms/1000:.0f}초 타임아웃"
+                        self.logger.log_warning(f"[경고] {coupon_name} 링크 클릭 타임아웃 ({timeout_info}, 실제응답: {click_time:.2f}초): {error_msg}")
                     else:
                         self.logger.log_warning(f"[경고] {coupon_name} 링크 클릭 오류 (응답시간: {click_time:.2f}초): {error_msg}")
                     
