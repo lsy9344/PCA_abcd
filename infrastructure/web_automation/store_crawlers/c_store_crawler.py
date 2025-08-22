@@ -429,45 +429,68 @@ class CStoreCrawler(BaseCrawler, StoreRepository):
             return False
 
     async def _click_coupon_link(self, link_element, coupon_name: str, max_retries: int = 1) -> bool:
-        """쿠폰 링크 클릭 (재시도 로직 축소)"""
+        """쿠폰 링크 클릭 - '2시간 무료할인권' 성공 로직과 동일하게 처리"""
+        import time
+        
         for attempt in range(max_retries + 1):
+            start_time = time.time()
             try:
                 if attempt > 0:
                     self.logger.log_info(f"[재시도] {coupon_name} 쿠폰 링크 클릭 (시도 {attempt + 1}/{max_retries + 1})")
                 else:
                     self.logger.log_info(f"[시도] {coupon_name} 쿠폰 링크 클릭")
                 
-                # 링크 클릭 전 요소 상태 확인
-                if not await link_element.is_visible():
-                    self.logger.log_warning(f"[경고] {coupon_name} 링크가 보이지 않음")
+                # 요소가 클릭 가능한 상태까지 기다리기 (최대 5초)
+                try:
+                    await link_element.wait_for(state='attached', timeout=2000)
+                    await link_element.wait_for(state='visible', timeout=2000)
+                except Exception:
+                    self.logger.log_warning(f"[경고] {coupon_name} 링크 상태 확인 실패 - 계속 진행")
+                
+                # 짧은 타임아웃으로 링크 클릭 (30초 → 5초)
+                try:
+                    await link_element.click(timeout=5000)
+                    click_time = time.time() - start_time
+                    self.logger.log_info(f"[성공] {coupon_name} 링크 클릭 완료 (응답시간: {click_time:.2f}초)")
+                    
+                    # 팝업 처리를 위한 짧은 대기
+                    await self.page.wait_for_timeout(2000)
+                    
+                    # 팝업이나 확인 메시지 처리
+                    await self._handle_apply_confirmation()
+                    
+                    return True
+                    
+                except Exception as click_error:
+                    click_time = time.time() - start_time
+                    error_msg = str(click_error)
+                    
+                    # 타임아웃의 경우 별도 처리
+                    if "Timeout" in error_msg:
+                        self.logger.log_warning(f"[경고] {coupon_name} 링크 클릭 타임아웃 (응답시간: {click_time:.2f}초): {error_msg}")
+                    else:
+                        self.logger.log_warning(f"[경고] {coupon_name} 링크 클릭 오류 (응답시간: {click_time:.2f}초): {error_msg}")
+                    
+                    # 재시도 여부 결정
                     if attempt < max_retries:
-                        await self.page.wait_for_timeout(2000)
+                        await self.page.wait_for_timeout(1000)
                         continue
-                    return False
-                
-                # 링크 클릭
-                await link_element.click()
-                
-                # 응답 대기 시간 단축 (5초 → 2초)
-                await self.page.wait_for_timeout(2000)
-                
-                self.logger.log_info(f"[성공] {coupon_name} 링크 클릭 완료")
-                
-                # 팝업이나 확인 메시지 처리 - 항상 성공으로 간주
-                await self._handle_apply_confirmation()
-                
-                # 중복 실행 방지를 위해 항상 true 반환
-                return True
+                    else:
+                        # 마지막 시도에서도 실패한 경우, 중복 실행 방지를 위해 성공으로 간주
+                        self.logger.log_warning(f"[경고] {coupon_name} 링크 클릭 실패하지만 중복 실행 방지를 위해 진행: {error_msg}")
+                        return True
                 
             except Exception as e:
                 error_msg = str(e)
+                elapsed_time = time.time() - start_time
+                
                 if attempt < max_retries:
-                    self.logger.log_warning(f"[경고] {coupon_name} 링크 클릭 실패 (시도 {attempt + 1}) - 재시도: {error_msg}")
-                    await self.page.wait_for_timeout(1000)  # 재시도 대기 시간 단축
+                    self.logger.log_warning(f"[경고] {coupon_name} 링크 클릭 실패 (시도 {attempt + 1}, 경과시간: {elapsed_time:.2f}초) - 재시도: {error_msg}")
+                    await self.page.wait_for_timeout(1000)
                     continue
                 else:
                     # 중복 실행 방지를 위해 마지막 시도에서도 성공으로 간주
-                    self.logger.log_warning(f"[경고] {coupon_name} 링크 클릭 실패하지만 중복 실행 방지를 위해 진행: {error_msg}")
+                    self.logger.log_warning(f"[경고] {coupon_name} 링크 클릭 실패하지만 중복 실행 방지를 위해 진행 (경과시간: {elapsed_time:.2f}초): {error_msg}")
                     return True
         
         # 모든 시도가 실패해도 중복 실행 방지를 위해 성공으로 간주

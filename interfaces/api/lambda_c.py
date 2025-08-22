@@ -4,6 +4,8 @@ C매장 전용 Lambda 핸들러
 """
 import json
 import asyncio
+import time
+import threading
 from typing import Dict, Any
 
 from core.application.dto.automation_dto import AutomationRequest, AutomationResponse
@@ -14,7 +16,8 @@ from infrastructure.factories.automation_factory import AutomationFactory
 # 전역 팩토리 (Lambda 컨테이너 재사용을 위해)
 _config_manager = None
 _automation_factory = None
-_active_requests = set()  # 활성 요청 추적을 위한 집합
+_active_requests = {}  # 활성 요청 추적: {request_key: {'start_time': timestamp, 'thread_id': id}}
+_request_lock = threading.Lock()  # 활성 요청 접근에 대한 락
 
 
 def get_automation_factory() -> AutomationFactory:
@@ -55,21 +58,38 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 }, ensure_ascii=False)
             }
         
-        # 중복 요청 방지
+        # 중복 요청 방지 (스레드 세이프)
         request_key = f"{store_id}_{vehicle_number}"
-        if request_key in _active_requests:
-            return {
-                'statusCode': 409,  # Conflict
-                'body': json.dumps({
-                    'success': False,
-                    'error': f'동일한 요청이 이미 처리 중입니다: {request_key}',
-                    'request_id': request_key
-                }, ensure_ascii=False)
-            }
+        current_time = time.time()
+        thread_id = threading.get_ident()
         
-        # 활성 요청으로 등록
-        _active_requests.add(request_key)
-        print(f"[INFO] 요청 시작: {request_key}")
+        with _request_lock:
+            # 활성 요청 상태 확인
+            if request_key in _active_requests:
+                active_request = _active_requests[request_key]
+                elapsed_time = current_time - active_request['start_time']
+                
+                # 5분 이상 경과한 요청은 타임아웃으로 간주하고 제거
+                if elapsed_time > 300:  # 5분
+                    print(f"[WARNING] 오래된 요청 타임아웃 제거: {request_key} (경과시간: {elapsed_time:.1f}초)")
+                    del _active_requests[request_key]
+                else:
+                    return {
+                        'statusCode': 409,  # Conflict
+                        'body': json.dumps({
+                            'success': False,
+                            'error': f'동일한 요청이 이미 처리 중입니다: {request_key} (경과시간: {elapsed_time:.1f}초)',
+                            'request_id': request_key,
+                            'active_thread_id': active_request['thread_id']
+                        }, ensure_ascii=False)
+                    }
+            
+            # 활성 요청으로 등록
+            _active_requests[request_key] = {
+                'start_time': current_time,
+                'thread_id': thread_id
+            }
+            print(f"[INFO] 요청 시작: {request_key} (스레드 ID: {thread_id})")
         
         # 자동화 실행
         request = AutomationRequest(
@@ -82,7 +102,8 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # 응답 상태 코드 결정
         status_code = 200 if response.success else 422
         
-        print(f"[INFO] 요청 완료: {request_key}, 성공: {response.success}")
+        elapsed_time = time.time() - current_time
+        print(f"[INFO] 요청 완료: {request_key}, 성공: {response.success} (처리시간: {elapsed_time:.1f}초)")
             
         return {
             'statusCode': status_code,
@@ -112,10 +133,13 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         }
     
     finally:
-        # 활성 요청에서 제거
-        if request_key and request_key in _active_requests:
-            _active_requests.remove(request_key)
-            print(f"[INFO] 요청 정리: {request_key}")
+        # 활성 요청에서 제거 (스레드 세이프)
+        if request_key:
+            with _request_lock:
+                if request_key in _active_requests:
+                    elapsed_time = time.time() - _active_requests[request_key]['start_time']
+                    del _active_requests[request_key]
+                    print(f"[INFO] 요청 정리: {request_key} (총 처리시간: {elapsed_time:.1f}초)")
 
 
 async def execute_automation(request: AutomationRequest) -> AutomationResponse:
