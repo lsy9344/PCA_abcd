@@ -253,8 +253,15 @@ class DiscountCalculator:
         for coupon_key, count in applications_dict.items():
             config = next((c for c in self.coupon_configs if c.coupon_key == coupon_key), None)
             if config and count > 0:
-                # available_coupons 체크 추가
-                available = available_coupons.get(config.coupon_name, 0)
+                # available_coupons 체크 추가 (타입 안전성 보장)
+                available_data = available_coupons.get(config.coupon_name, 0)
+                
+                # 딕셔너리 형태인 경우 정수값 추출
+                if isinstance(available_data, dict):
+                    available = max(available_data.get('car', 0), available_data.get('total', 0))
+                else:
+                    available = available_data if isinstance(available_data, int) else 0
+                
                 actual_count = min(count, available)
                 
                 if actual_count > 0:

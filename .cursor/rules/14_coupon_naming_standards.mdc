@@ -1,0 +1,245 @@
+---
+title: "쿠폰 이름 사용 표준 및 YAML 기반 설정 원칙"
+order: 14
+category: "business_logic"
+tags: ["coupon", "naming", "yaml", "configuration", "standards"]
+lastUpdated: "2025-08-22"
+alwaysApply: true
+description: "매장별 쿠폰 이름 표준화 및 YAML 설정 파일 사용 의무화 규칙"
+---
+
+# 쿠폰 이름 사용 표준 및 YAML 기반 설정 원칙
+
+> **⚠️ 필수 규칙**: 모든 코드에서 쿠폰 이름 사용 시 반드시 각 매장의 YAML 설정 파일을 참조해야 합니다.
+
+---
+
+## 🎯 **핵심 원칙**
+
+### **1. YAML 우선 원칙**
+```python
+# ❌ 잘못된 방법: 하드코딩
+coupon_name = "1시간 무료"  # 매장별로 다를 수 있음
+
+# ✅ 올바른 방법: YAML 설정 사용
+store_config = config_manager.get_store_config(store_id)
+coupon_name = store_config.coupons['FREE_1HOUR']['name']
+```
+
+### **2. 매장별 설정 파일 의존성**
+- 모든 쿠폰 이름은 `infrastructure/config/store_configs/{store_id}_store_config.yaml`에서 로드
+- 테스트 코드, 크롤러, 할인 규칙 모두 동일한 소스 사용
+- 하드코딩된 쿠폰 이름 사용 절대 금지
+
+---
+
+## 📂 **매장별 YAML 파일 구조**
+
+### **표준 쿠폰 설정 구조**
+```yaml
+# 예: c_store_config.yaml
+coupons:
+  FREE_2HOUR:
+    name: "2시간 무료할인권"    # ← 이것이 정확한 쿠폰 이름
+    type: "FREE"
+    duration_minutes: 120
+    priority: 0
+  PAID_1HOUR:
+    name: "1시간 유료할인권"    # ← 이것이 정확한 쿠폰 이름
+    type: "PAID"
+    duration_minutes: 60
+    priority: 1
+```
+
+### **쿠폰 키 → 이름 매핑**
+```yaml
+# YAML에서 쿠폰 이름 매핑도 제공
+coupon_key_mapping:
+  "2시간 무료할인권": "FREE_2HOUR"
+  "1시간 유료할인권": "PAID_1HOUR"
+  # 별칭도 지원 가능
+  "무료 2시간할인": "FREE_2HOUR"
+```
+
+---
+
+## 🏪 **매장별 정확한 쿠폰 이름**
+
+| 매장 | 무료 쿠폰 | 유료 쿠폰 | 주말 쿠폰 |
+|------|-----------|-----------|-----------|
+| **A 매장** | "30분할인권(무료)" | "1시간할인권(유료)" | "1시간주말할인권(유료)" |
+| **B 매장** | "무료 1시간할인" | "유료 30분할인 (판매 : 300)" | ❌ |
+| **C 매장** | "2시간 무료할인권" | "1시간 유료할인권" | ❌ |
+| **D 매장** | "1시간 무료" | "30분 유료" | ❌ |
+
+---
+
+## 🔧 **코드 작성 규칙**
+
+### **1. 테스트 코드에서의 사용**
+```python
+# ✅ 올바른 테스트 코드 작성
+def test_c_store_coupons():
+    config_manager = ConfigManager()
+    store_config = config_manager.get_store_config("C")
+    
+    # YAML에서 정의된 정확한 쿠폰 이름 사용
+    expected_coupons = [
+        store_config.coupons['FREE_2HOUR']['name'],   # "2시간 무료할인권"
+        store_config.coupons['PAID_1HOUR']['name']    # "1시간 유료할인권"
+    ]
+    
+    # 테스트 로직...
+```
+
+### **2. 크롤러에서의 사용**
+```python
+# ✅ 크롤러에서 쿠폰 이름 참조
+class CStoreCrawler(BaseCrawler):
+    def __init__(self, store_config, ...):
+        # 설정에서 쿠폰 이름 로드
+        self.coupon_names = {
+            key: config['name'] 
+            for key, config in store_config.coupons.items()
+        }
+    
+    async def apply_coupons(self, applications):
+        for app in applications:
+            # app.coupon_name은 YAML에서 정의된 정확한 이름
+            # 예: "2시간 무료할인권"
+            await self._click_coupon_by_name(app.coupon_name)
+```
+
+### **3. 할인 규칙에서의 사용**
+```python
+# ✅ 할인 규칙에서 쿠폰 이름 매핑
+class CDiscountRule:
+    def __init__(self):
+        self.config = self._load_store_config()
+        
+        # YAML 기반 매핑 생성
+        self.coupon_key_to_name = {
+            key: config['name'] 
+            for key, config in self.config['coupons'].items()
+        }
+        self.coupon_name_to_key = {
+            config['name']: key 
+            for key, config in self.config['coupons'].items()
+        }
+```
+
+---
+
+## ⚠️ **금지 패턴 및 실수 방지**
+
+### **❌ 절대 하지 말 것**
+```python
+# 1. 하드코딩된 쿠폰 이름
+coupon_name = "1시간 무료"  # 어느 매장 것인지 불분명
+
+# 2. 다른 매장 쿠폰 이름 혼용
+expected_coupons = ["1시간 무료", "30분 유료"]  # D 매장 쿠폰을 C 매장 테스트에서 사용
+
+# 3. 추측에 의한 쿠폰 이름
+coupon_name = "무료쿠폰"  # YAML에 정의되지 않은 이름
+
+# 4. 일관성 없는 이름 사용
+if store_id == "C":
+    coupon = "2시간 무료"  # YAML에는 "2시간 무료할인권"으로 정의됨
+```
+
+### **✅ 올바른 패턴**
+```python
+# 1. YAML 기반 동적 로딩
+store_config = config_manager.get_store_config(store_id)
+coupon_name = store_config.coupons[coupon_key]['name']
+
+# 2. 매장별 검증 로직
+def validate_coupon_names(store_id, coupon_names):
+    store_config = config_manager.get_store_config(store_id)
+    expected_names = [config['name'] for config in store_config.coupons.values()]
+    return all(name in expected_names for name in coupon_names)
+
+# 3. 설정 기반 테스트
+test_coupons = [
+    store_config.coupons['FREE_2HOUR']['name'],  # 매장별 정확한 이름
+    store_config.coupons['PAID_1HOUR']['name']
+]
+```
+
+---
+
+## 🧪 **테스트 작성 가이드라인**
+
+### **1. E2E 테스트에서의 쿠폰 검증**
+```python
+async def test_store_coupon_consistency():
+    """각 매장의 쿠폰 이름이 YAML 설정과 일치하는지 검증"""
+    
+    for store_id in ["A", "B", "C", "D"]:
+        store_config = config_manager.get_store_config(store_id)
+        
+        # YAML에서 정의된 쿠폰 이름 리스트
+        yaml_coupon_names = [
+            config['name'] for config in store_config.coupons.values()
+        ]
+        
+        # 실제 크롤러에서 발견된 쿠폰 이름과 비교
+        found_coupons = await crawler.get_available_coupon_names()
+        
+        # 검증: YAML 정의와 실제 발견된 쿠폰이 일치해야 함
+        assert set(yaml_coupon_names).issubset(set(found_coupons))
+```
+
+### **2. 매장별 특화 테스트**
+```python
+def test_c_store_specific_coupons():
+    """C 매장의 특화 쿠폰 (2시간 무료) 테스트"""
+    
+    config = config_manager.get_store_config("C")
+    
+    # YAML에서 정의된 정확한 이름 사용
+    free_coupon_name = config.coupons['FREE_2HOUR']['name']
+    paid_coupon_name = config.coupons['PAID_1HOUR']['name']
+    
+    assert free_coupon_name == "2시간 무료할인권"
+    assert paid_coupon_name == "1시간 유료할인권"
+    
+    # 시간 검증
+    assert config.coupons['FREE_2HOUR']['duration_minutes'] == 120
+    assert config.coupons['PAID_1HOUR']['duration_minutes'] == 60
+```
+
+---
+
+## 📋 **체크리스트**
+
+### **새로운 매장 추가 시**
+- [ ] `{store_id}_store_config.yaml` 파일 생성
+- [ ] 정확한 쿠폰 이름을 `coupons.{key}.name`에 정의
+- [ ] 크롤러에서 YAML 기반 쿠폰 이름 로딩 구현
+- [ ] 할인 규칙에서 YAML 기반 매핑 적용
+- [ ] 테스트 코드에서 YAML 기반 검증 로직 작성
+
+### **기존 코드 수정 시**
+- [ ] 하드코딩된 쿠폰 이름 제거
+- [ ] YAML 설정 기반 동적 로딩으로 변경
+- [ ] 매장별 차이점을 YAML 설정으로 흡수
+- [ ] 테스트에서 올바른 매장의 쿠폰 이름 사용 확인
+
+### **코드 리뷰 시**
+- [ ] 쿠폰 이름이 하드코딩되어 있지 않은지 확인
+- [ ] 다른 매장의 쿠폰 이름을 잘못 사용하지 않았는지 확인
+- [ ] YAML 설정과 일치하는 쿠폰 이름 사용 확인
+- [ ] 매장별 특화 로직이 설정 기반으로 구현되었는지 확인
+
+---
+
+## 🎯 **요약**
+
+1. **절대 원칙**: 모든 쿠폰 이름은 각 매장의 YAML 설정 파일에서 로드
+2. **금지 사항**: 쿠폰 이름 하드코딩, 다른 매장 쿠폰 이름 혼용
+3. **필수 구현**: 설정 기반 동적 로딩, 매장별 검증 로직
+4. **테스트 원칙**: YAML 정의와 실제 동작의 일치성 검증
+
+**이 규칙을 준수하면 매장별 차이점으로 인한 버그를 예방하고 유지보수성을 크게 향상시킬 수 있습니다.**

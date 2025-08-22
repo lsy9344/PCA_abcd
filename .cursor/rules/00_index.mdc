@@ -44,7 +44,7 @@ description: "프로젝트 문서 읽기 순서와 구조 가이드"
 | 순서 | 파일명 | 설명 | 중요도 |
 |------|--------|------|--------|
 | 9 | `13_store_coupon_comparison.mdc` | 매장별 쿠폰 시스템 비교 | ⭐⭐ |
-| 10 | `14_store_special_conditions.mdc` | 매장별 특수 조건 및 예외 | ⭐⭐ |
+| 10 | `14_coupon_naming_standards.mdc` | 쿠폰 이름 사용 표준 및 YAML 기반 설정 원칙 | ⭐⭐⭐ |
 | 11 | `15_current_implementation.mdc` | 현재 구현된 쿠폰 파싱 로직 | ⭐⭐⭐ |
 | 12 | `20_selectors.mdc` | 웹 셀렉터 관리 정책 | ⭐⭐ |
 | 13 | `30_error_policy.mdc` | 에러 처리 및 로깅 정책 | ⭐⭐ |
@@ -91,6 +91,7 @@ description: "프로젝트 문서 읽기 순서와 구조 가이드"
 
 ### **자주 찾는 정보**
 - **쿠폰 계산 로직**: `10_discount_logic.mdc` + `11_calculation_principles.mdc` + `15_current_implementation.mdc`
+- **쿠폰 이름 사용**: `14_coupon_naming_standards.mdc` (필수 - YAML 기반 설정)
 - **새 매장 추가**: `04_base_store_design.mdc` + `92_store_integration_troubleshooting.mdc`
 - **테스트 수행**: `90_testing_lessons.mdc`
 - **문제 해결**: `92_store_integration_troubleshooting.mdc` + `30_error_policy.mdc`
@@ -98,6 +99,7 @@ description: "프로젝트 문서 읽기 순서와 구조 가이드"
 - **코딩 규칙**: `99_coding_standards.mdc`
 
 ### **문서 업데이트 이력**
+- 2025-08-22: 쿠폰 이름 사용 표준 및 YAML 기반 설정 원칙 추가 (14_coupon_naming_standards.mdc)
 - 2025-08-19: 매장 통합 문제 해결 종합 가이드 추가, 테스트 실무 가이드 개선
 - 2024-08-15: 현재 구현 로직 문서 추가 (15_current_implementation.mdc)
 - 2024-01-15: 문서 구조 재정리 및 인덱스 생성

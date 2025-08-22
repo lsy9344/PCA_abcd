@@ -38,6 +38,7 @@ description: "Playwright 자동화 프로젝트 코드 작성 규칙 및 권장 
 - **time.sleep 대신** Playwright의 `await page.wait_for_selector()` 활용 권장(더 안정적)
 - **셀렉터/입력값**은 설정 파일에 관리하면 유지보수 편리
 - **설정/쿠폰명 등 하드코딩 금지**, config.yaml 등에서 불러오는 습관
+- **⚠️ 쿠폰 이름 사용 시 필수**: 각 매장의 YAML 설정 파일에서 정의된 정확한 이름만 사용 (14_coupon_naming_standards.mdc 참조)
 - **로그는 항상 남기기:** 성공/실패/예외 모두 logger.info/error로 기록
 - 재시도/실패 후 종료는 반드시 로그 후 진행
 

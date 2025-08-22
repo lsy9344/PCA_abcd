@@ -120,20 +120,52 @@ class CDiscountRule:
                 is_weekday=is_weekday
             )
             
+            # 디버그: 계산 결과 출력
+            self.logger.info(f"[디버그] DiscountCalculator 결과: {applications}")
+            self.logger.info(f"[디버그] applications 타입: {type(applications)}")
+            if applications:
+                for i, app in enumerate(applications):
+                    self.logger.info(f"[디버그] application {i+1}: coupon_name='{app.coupon_name}', count={app.count}")
+            
             # 설정 기반 동적 결과 딕셔너리 생성
             result = {coupon_key: 0 for coupon_key in self.config['coupons'].keys()}
+            self.logger.info(f"[디버그] 초기 result 딕셔너리: {result}")
+            
+            # 쿠폰 이름 매핑 정보 출력
+            self.logger.info(f"[디버그] 쿠폰 이름->키 매핑: {self.coupon_name_to_key}")
             
             # 쿠폰 이름을 키로 변환 (설정 기반)
             for app in applications:
+                self.logger.info(f"[디버그] 매핑 시도: '{app.coupon_name}' -> ?")
                 coupon_key = self.coupon_name_to_key.get(app.coupon_name)
+                self.logger.info(f"[디버그] 매핑 결과: '{app.coupon_name}' -> '{coupon_key}'")
+                
                 if coupon_key and coupon_key in result:
+                    self.logger.info(f"[디버그] 적용: {coupon_key} = {app.count}")
                     result[coupon_key] = app.count
+                else:
+                    self.logger.warning(f"[경고] 매핑 실패: coupon_name='{app.coupon_name}', coupon_key='{coupon_key}'")
             
             self.logger.info(f"[최종] C 매장 쿠폰 적용 계획: {result}")
             return result
             
         except Exception as e:
+            # 디버깅 정보 출력
+            import traceback
             self.logger.error(f"[실패] C 매장 쿠폰 적용 계산 중 오류: {str(e)}")
+            self.logger.error(f"[디버그] my_history: {my_history}")
+            self.logger.error(f"[디버그] total_history: {total_history}")
+            self.logger.error(f"[디버그] discount_info: {discount_info}")
+            self.logger.error(f"[디버그] 상세 에러: {traceback.format_exc()}")
+            
+            # 기본 복구 로직: 무료 쿠폰 1개 적용
+            try:
+                if not my_history.get('FREE_2HOUR', 0) and not total_history.get('FREE_2HOUR', 0):
+                    self.logger.info("[복구] 무료 2시간 쿠폰 1개 적용으로 복구 시도")
+                    return {'FREE_2HOUR': 1, 'PAID_1HOUR': 0}
+            except Exception:
+                pass
+            
             # 설정 기반 동적 오류 반환값 생성
             return {coupon_key: 0 for coupon_key in self.config['coupons'].keys()}
     

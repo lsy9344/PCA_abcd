@@ -47,6 +47,13 @@ selectors:
     notice_popup: ".popup"
     ok_button: ".popup-ok"
     close_button: ".popup-close"
+    # 할인권적용 팝업 (쿠폰 적용 후 발생)
+    discount_apply_popup:
+      - 'a:has-text("닫기")'
+      - 'button:has-text("닫기")'
+      - 'text=닫기'
+      - 'a[href*="close"]'
+      - '.close-modal'
   
   # 차량 검색
   search:
@@ -175,6 +182,9 @@ search_failure_detection:
       - 'text=닫기'
       - 'button:has-text("OK")'
       - 'button:has-text("확인")'
+      - 'a:has-text("닫기")'
       - '.popup-ok'
       - '.popup-close'
       - '.btn-close'
+      - '.close-modal'
+      - 'a[href*="close"]'

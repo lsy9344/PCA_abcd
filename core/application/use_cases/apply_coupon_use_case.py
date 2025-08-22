@@ -98,13 +98,28 @@ class ApplyCouponUseCase:
                 self._logger.log_info(f"[{request.store_id}] 변환된 내 이력: {my_history_by_key}")
                 self._logger.log_info(f"[{request.store_id}] 변환된 전체 이력: {total_history_by_key}")           
             
-            # 할인 계산
+            # 할인 계산 - 입력 데이터 디버그 로깅
+            self._logger.log_info(f"[디버그] 할인 계산 입력 - my_history: {my_history_by_key}")
+            self._logger.log_info(f"[디버그] 할인 계산 입력 - total_history: {total_history_by_key}")
+            self._logger.log_info(f"[디버그] 할인 계산 입력 - available_coupons: {available_coupons}")
+            self._logger.log_info(f"[디버그] 할인 계산 입력 - is_weekday: {is_weekday}")
+            
             applications = self._discount_calculator.calculate_required_coupons(
                 my_history=my_history_by_key,
                 total_history=total_history_by_key,
                 available_coupons=available_coupons,
                 is_weekday=is_weekday
             )
+            
+            # 할인 계산 결과 디버그 로깅
+            self._logger.log_info(f"[디버그] 할인 계산 결과 - applications: {applications}")
+            self._logger.log_info(f"[디버그] applications 타입: {type(applications)}")
+            self._logger.log_info(f"[디버그] applications 길이: {len(applications) if applications else 0}")
+            if applications:
+                for i, app in enumerate(applications):
+                    self._logger.log_info(f"[디버그] 적용할 쿠폰 {i+1}: {app.coupon_name}, 개수: {app.count}")
+            else:
+                self._logger.log_info(f"[디버그] applications가 비어있음 또는 None")
 
             # 8. 쿠폰 적용 (적용할 쿠폰이 있는 경우에만 로그)
             actually_applied_coupons = []
