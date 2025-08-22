@@ -447,12 +447,21 @@ class CStoreCrawler(BaseCrawler, StoreRepository):
         try:
             confirmation_selectors = ['text=확인', 'text=OK', '.confirm-btn', '.popup-ok']
             for selector in confirmation_selectors:
-                button = self.page.locator(selector)
-                if await button.count() > 0:
+                try:
+                    # 짧은 타임아웃으로 팝업 확인 (C매장은 팝업이 없을 수 있음)
+                    button = self.page.locator(selector)
+                    await button.wait_for(state='visible', timeout=3000)  # 3초만 대기
                     await button.first.click()
                     await self.page.wait_for_timeout(500)
                     self.logger.log_info("[성공] 쿠폰 적용 확인 팝업 처리 완료")
-                    break
+                    return
+                except Exception:
+                    # 해당 셀렉터로 팝업을 찾지 못했으면 다음 셀렉터 시도
+                    continue
+            
+            # 모든 셀렉터에서 팝업을 찾지 못한 경우 (정상적인 상황)
+            self.logger.log_info("[정보] 확인 팝업 없이 쿠폰 적용 완료")
+            
         except Exception as e:
             self.logger.log_warning(f"[경고] 확인 팝업 처리 실패: {str(e)}")
 
