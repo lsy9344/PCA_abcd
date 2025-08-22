@@ -54,8 +54,7 @@ class CStoreCrawler(BaseCrawler, StoreRepository):
             
             self.logger.log_info("[성공] C 매장 로그인 및 메인 페이지 로드 완료")
             
-            # 팝업 처리
-            await self._handle_popups()
+            # C매장은 로그인 후 팝업이 발생하지 않아 팝업 처리 생략
             
             return True
             

@@ -286,6 +286,7 @@ function onFormSubmit(e) {
     handleMultiSubmissionCheck(sheetName, storeInfo);
 
     const duplicateCheck = isDuplicateRequest(sheetName, vehicleNumber);
+    /*
     if (duplicateCheck.isDuplicate) {
       const { remainingTime } = duplicateCheck;
       markProcessingStatus(sheet, rowNumber, `⚠️ 중복요청 (${remainingTime}분)`);
@@ -293,7 +294,7 @@ function onFormSubmit(e) {
       sendTelegramMessage(warningMessage);
       return;
     }
-
+    */
     markProcessingStatus(sheet, rowNumber, '⏳ 처리중...');
 
     const payload = { store_id: storeInfo.store_id, vehicle_number: vehicleNumber };
