@@ -127,8 +127,16 @@ class ApplyCouponUseCase:
                         raise Exception("쿠폰 적용 실패")
                         
                 except Exception as apply_error:
-                    self._logger.log_error("쿠폰적용", "쿠폰적용", f"[{request.store_id}] 쿠폰 적용 중 오류: {str(apply_error)}")
-                    raise Exception(f"쿠폰 적용 실패: {str(apply_error)}")
+                    error_msg = str(apply_error)
+                    self._logger.log_error("쿠폰적용", "쿠폰적용", f"[{request.store_id}] 쿠폰 적용 중 오류: {error_msg}")
+                    
+                    # 쿠폰 적용 실패 후 페이지 상태 안정화 시도
+                    try:
+                        await self._stabilize_page_after_error()
+                    except Exception:
+                        pass  # 안정화 실패해도 무시
+                    
+                    raise Exception(f"쿠폰 적용 실패: {error_msg}")
             else:
                 self._logger.log_info(f"[{request.store_id}][쿠폰적용] 적용할 쿠폰이 없습니다")
 
@@ -224,3 +232,24 @@ class ApplyCouponUseCase:
         )
         
         await self._notification_service.send_error_notification(error_context) 
+    
+    async def _stabilize_page_after_error(self) -> None:
+        """쿠폰 적용 실패 후 페이지 상태 안정화"""
+        try:
+            # StoreRepository에 페이지 안정화 메서드가 있는지 확인
+            if hasattr(self._store_repository, 'page') and self._store_repository.page:
+                page = self._store_repository.page
+                
+                # 현재 URL 확인
+                current_url = page.url
+                self._logger.log_info(f"[안정화] 현재 페이지: {current_url}")
+                
+                # 페이지 새로고침으로 상태 초기화
+                await page.reload(wait_until='networkidle')
+                await page.wait_for_timeout(3000)
+                
+                self._logger.log_info("[안정화] 페이지 새로고침 완료")
+                
+        except Exception as e:
+            self._logger.log_warning(f"[경고] 페이지 안정화 실패: {str(e)}")
+            # 안정화 실패해도 예외를 던지지 않음

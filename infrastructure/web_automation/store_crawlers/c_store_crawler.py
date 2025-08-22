@@ -165,6 +165,8 @@ class CStoreCrawler(BaseCrawler, StoreRepository):
         """쿠폰 적용 - 무료 쿠폰 우선 적용"""
         try:
             coupons_to_apply = {app.coupon_name: app.count for app in applications}
+            request_id = f"C_coupon_apply_{hash(str(coupons_to_apply))}"
+            self.logger.log_request_lifecycle(request_id, "START", f"쿠폰 적용 시작: {coupons_to_apply}")
             self.logger.log_info(f"[쿠폰] C 매장 쿠폰 적용 시작: {coupons_to_apply}")
             
             # 무료 쿠폰 우선 정렬 (무료 > 유료 순서)
@@ -183,13 +185,17 @@ class CStoreCrawler(BaseCrawler, StoreRepository):
                             return False
             
             if total_applied > 0:
+                self.logger.log_request_lifecycle(request_id, "END", f"쿠폰 적용 완료: 총 {total_applied}개")
                 self.logger.log_info(f"[완료] C 쿠폰 적용 완료: 총 {total_applied}개")
                 return True
             else:
+                self.logger.log_request_lifecycle(request_id, "END", "적용할 쿠폰이 없음")
                 self.logger.log_info("[정보] 적용할 쿠폰이 없음")
                 return True
             
         except Exception as e:
+            if 'request_id' in locals():
+                self.logger.log_request_lifecycle(request_id, "ERROR", f"쿠폰 적용 실패: {str(e)}")
             self.logger.log_error(ErrorCode.FAIL_APPLY, "쿠폰적용", str(e))
             return False
 
@@ -403,12 +409,12 @@ class CStoreCrawler(BaseCrawler, StoreRepository):
                     if coupon_name in link_text:
                         self.logger.log_info(f"[발견] {coupon_name} 쿠폰 링크 찾음")
                         
-                        # 3. 쿠폰 링크 클릭
-                        if await self._click_coupon_link(link_element, coupon_name):
+                        # 3. 쿠폰 링크 클릭 (재시도 포함)
+                        if await self._click_coupon_link(link_element, coupon_name, max_retries=2):
                             self.logger.log_info(f"[성공] {coupon_name} 적용 완료")
                             return True
                         else:
-                            self.logger.log_error(ErrorCode.FAIL_APPLY, "쿠폰적용", f"{coupon_name} 링크 클릭 실패")
+                            self.logger.log_error(ErrorCode.FAIL_APPLY, "쿠폰적용", f"{coupon_name} 링크 클릭 실패 (재시도 포함)")
                             return False
                             
                 except Exception as link_e:
@@ -422,48 +428,101 @@ class CStoreCrawler(BaseCrawler, StoreRepository):
             self.logger.log_error(ErrorCode.FAIL_APPLY, "쿠폰적용", f"{coupon_name} 적용 중 오류: {str(e)}")
             return False
 
-    async def _click_coupon_link(self, link_element, coupon_name: str) -> bool:
-        """쿠폰 링크 클릭"""
-        try:
-            self.logger.log_info(f"[시도] {coupon_name} 쿠폰 링크 클릭")
-            
-            # 링크 클릭
-            await link_element.click()
-            await self.page.wait_for_timeout(3000)  # 처리 대기
-            
-            self.logger.log_info(f"[성공] {coupon_name} 링크 클릭 완료")
-            
-            # 팝업이나 확인 메시지 처리
-            await self._handle_apply_confirmation()
-            
-            return True
-            
-        except Exception as e:
-            self.logger.log_error(ErrorCode.FAIL_APPLY, "링크클릭", f"{coupon_name} 링크 클릭 중 오류: {str(e)}")
-            return False
+    async def _click_coupon_link(self, link_element, coupon_name: str, max_retries: int = 2) -> bool:
+        """쿠폰 링크 클릭 (재시도 로직 포함)"""
+        for attempt in range(max_retries + 1):
+            try:
+                if attempt > 0:
+                    self.logger.log_info(f"[재시도] {coupon_name} 쿠폰 링크 클릭 (시도 {attempt + 1}/{max_retries + 1})")
+                else:
+                    self.logger.log_info(f"[시도] {coupon_name} 쿠폰 링크 클릭")
+                
+                # 링크 클릭 전 요소 상태 확인
+                if not await link_element.is_visible():
+                    self.logger.log_warning(f"[경고] {coupon_name} 링크가 보이지 않음")
+                    if attempt < max_retries:
+                        await self.page.wait_for_timeout(2000)
+                        continue
+                    return False
+                
+                # 링크 클릭
+                await link_element.click()
+                
+                # 응답 대기 시간 증가 (3초 → 5초)
+                await self.page.wait_for_timeout(5000)
+                
+                self.logger.log_info(f"[성공] {coupon_name} 링크 클릭 완료")
+                
+                # 팝업이나 확인 메시지 처리
+                confirmation_result = await self._handle_apply_confirmation()
+                
+                # 확인 처리 성공 시 true 반환
+                if confirmation_result:
+                    return True
+                elif attempt < max_retries:
+                    self.logger.log_warning(f"[경고] {coupon_name} 확인 처리 실패 - 재시도")
+                    await self.page.wait_for_timeout(2000)
+                    continue
+                
+                return True  # 확인 팝업이 없어도 성공으로 간주
+                
+            except Exception as e:
+                error_msg = str(e)
+                if attempt < max_retries:
+                    self.logger.log_warning(f"[경고] {coupon_name} 링크 클릭 실패 (시도 {attempt + 1}) - 재시도: {error_msg}")
+                    await self.page.wait_for_timeout(3000)
+                    continue
+                else:
+                    self.logger.log_error(ErrorCode.FAIL_APPLY, "링크클릭", f"{coupon_name} 링크 클릭 중 오류: {error_msg}")
+                    return False
+        
+        return False
 
-    async def _handle_apply_confirmation(self):
+    async def _handle_apply_confirmation(self) -> bool:
         """쿠폰 적용 확인 팝업 처리"""
         try:
-            confirmation_selectors = ['text=확인', 'text=OK', '.confirm-btn', '.popup-ok']
+            # 확장된 셀렉터 목록
+            confirmation_selectors = [
+                'text=확인', 'text=OK', 'text=완료', 'text=닫기',
+                '.confirm-btn', '.popup-ok', '.ok-btn', '.close-btn',
+                'button:has-text("확인")', 'button:has-text("OK")',
+                'input[value="확인"]', 'input[value="OK"]'
+            ]
+            
+            # 팝업 대기 시간 증가 (3초 → 7초)
             for selector in confirmation_selectors:
                 try:
-                    # 짧은 타임아웃으로 팝업 확인 (C매장은 팝업이 없을 수 있음)
                     button = self.page.locator(selector)
-                    await button.wait_for(state='visible', timeout=3000)  # 3초만 대기
-                    await button.first.click()
-                    await self.page.wait_for_timeout(500)
-                    self.logger.log_info("[성공] 쿠폰 적용 확인 팝업 처리 완료")
-                    return
+                    await button.wait_for(state='visible', timeout=7000)  # 7초 대기
+                    
+                    # 버튼이 클릭 가능한지 확인
+                    if await button.is_enabled():
+                        await button.first.click()
+                        await self.page.wait_for_timeout(1000)  # 클릭 후 대기 시간 증가
+                        self.logger.log_info(f"[성공] 쿠폰 적용 확인 팝업 처리 완료 (셀렉터: {selector})")
+                        return True
+                    
                 except Exception:
                     # 해당 셀렉터로 팝업을 찾지 못했으면 다음 셀렉터 시도
                     continue
             
-            # 모든 셀렉터에서 팝업을 찾지 못한 경우 (정상적인 상황)
-            self.logger.log_info("[정보] 확인 팝업 없이 쿠폰 적용 완료")
+            # 모든 셀렉터에서 팝업을 찾지 못한 경우
+            # 페이지에 alert나 dialog가 있는지 추가 확인
+            try:
+                # JavaScript alert/confirm 대화상자 확인
+                await self.page.wait_for_function(
+                    "() => !document.querySelector('.loading, .spinner')", 
+                    timeout=3000
+                )
+                self.logger.log_info("[정보] 확인 팝업 없이 쿠폰 적용 완료")
+                return True
+            except Exception:
+                self.logger.log_info("[정보] 로딩 완료 대기 후 쿠폰 적용 완료")
+                return True
             
         except Exception as e:
             self.logger.log_warning(f"[경고] 확인 팝업 처리 실패: {str(e)}")
+            return False
 
     async def _click_search_button(self) -> bool:
         """검색 버튼 클릭 (여러 셀렉터 시도)"""

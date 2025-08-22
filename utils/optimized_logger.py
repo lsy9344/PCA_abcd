@@ -26,6 +26,7 @@ class ErrorCode(Enum):
     FAIL_TIMEOUT = "FAIL_TIMEOUT"     # 타임아웃 오류
     FAIL_SETUP = "FAIL_SETUP"         # 설정/초기화 실패
     FAIL_TEST = "FAIL_TEST"           # 테스트 실행 실패
+    DUPLICATE_REQUEST = "DUPLICATE_REQUEST"  # 중복 요청 탐지
     SUCCESS = "SUCCESS"               # 성공
 
 
@@ -135,6 +136,24 @@ class OptimizedLogger:
     def log_warning(self, message: str) -> None:
         """경고 로그 기록"""
         self.logger.warning(f"[{self.store_name}] {message}")
+    
+    def log_duplicate_request(self, request_id: str, message: str) -> None:
+        """중복 요청 탐지 로그 (항상 기록)"""
+        log_message = f"[{self.store_name}][DUPLICATE] {request_id} - {message}"
+        self.logger.warning(log_message)
+    
+    def log_request_lifecycle(self, request_id: str, status: str, details: Optional[str] = None) -> None:
+        """요청 생명주기 추적 로그"""
+        log_message = f"[{self.store_name}][REQUEST] {request_id} - {status}"
+        if details:
+            log_message += f" - {details}"
+        
+        if status in ['START', 'END', 'ERROR']:
+            # 중요한 생명주기 이벤트는 항상 기록
+            self.logger.info(log_message)
+        elif self.environment != 'production':
+            # 세부 추적 정보는 개발 환경에서만
+            self.logger.info(log_message)
 
 
 class ErrorContext:
