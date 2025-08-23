@@ -279,7 +279,7 @@ class DStoreCrawler(BaseCrawler, StoreRepository):
         """쿠폰 부족 텔레그램 알림 (A 매장과 동일한 견고한 에러 처리 적용)"""
         try:
             if self.notification_service:
-                message = f"D 매장 보유 쿠폰 충전 필요 알림\n\n"
+                message = f"[송산(c)매장] 쿠폰 충전 필요 알림\n\n"
                 message += f"쿠폰 종류: {coupon_name}\n"
                 message += f"현재 쿠폰: {coupon_count}개\n"
                 message += f"권장 최소량: 50개\n"

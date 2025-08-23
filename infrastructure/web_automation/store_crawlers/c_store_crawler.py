@@ -269,7 +269,7 @@ class CStoreCrawler(BaseCrawler, StoreRepository):
     async def send_low_coupon_notification(self, coupon_name: str, coupon_count: int) -> None:
         """쿠폰 부족 텔레그램 알림"""
         if self.notification_service:
-            message = f"C 매장 보유 쿠폰 충전 필요 알림\n\n쿠폰 종류: {coupon_name}\n현재 쿠폰: {coupon_count}개\n권장 최소량: 50개"
+            message = f"[인천검단(c)매장] 쿠폰 충전 필요 알림\n\n쿠폰 종류: {coupon_name}\n현재 쿠폰: {coupon_count}개\n권장 최소량: 50개"
             await self.notification_service.send_success_notification(message=message, store_id=self.store_id)
             self.logger.log_info("[성공] 쿠폰 부족 텔레그램 알림 전송 완료")
         else:
