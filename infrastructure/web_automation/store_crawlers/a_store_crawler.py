@@ -107,24 +107,8 @@ class AStoreCrawler(BaseCrawler, StoreRepository):
             # 검색 결과 대기
             await self.page.wait_for_timeout(1000)
             
-            # [추가] #parkName의 텍스트가 '검색된 차량이 없습니다.'인지 확인
-            try:
-                park_name_elem = self.page.locator('#parkName')
-                if await park_name_elem.count() > 0:
-                    park_name_text = await park_name_elem.inner_text()
-                    if '검색된 차량이 없습니다.' in park_name_text:
-                        # 텔레그램 알림 전송
-                        await self._send_no_vehicle_notification(vehicle.number)
-                        self.logger.log_error(ErrorCode.NO_VEHICLE, "차량검색", f"차량번호 {vehicle.number} 검색 결과 없음")
-                        return False
-            except Exception:
-                pass
-            
-            # 기존: 검색 결과 확인
-            no_result = self.page.locator('text="검색된 차량이 없습니다"')
-            if await no_result.count() > 0:
-                # 텔레그램 알림 전송
-                await self._send_no_vehicle_notification(vehicle.number)
+            # 공통 차량 검색 실패 감지 로직 사용
+            if await self.check_no_vehicle_found(self.page, vehicle.number):
                 self.logger.log_error(ErrorCode.NO_VEHICLE, "차량검색", f"차량번호 {vehicle.number} 검색 결과 없음")
                 return False
                 

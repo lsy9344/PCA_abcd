@@ -82,32 +82,10 @@ class EStoreCrawler(BaseCrawler, StoreRepository):
             await self.page.wait_for_timeout(2000)
             
             
-            # test_b_store_ui_2.py 방식: 직접적인 검색 결과 없음 패턴 체크
-            no_result_patterns = [
-                'text=검색 결과가 없습니다', 'text="검색 결과가 없습니다"',
-                'text=검색된 차량이 없습니다', 'text="검색된 차량이 없습니다"'
-            ]
-            
-            for pattern in no_result_patterns:
-                no_result = self.page.locator(pattern)
-                if await no_result.count() > 0:
-                    self.logger.log_warning(f"[경고] 검색 결과 없음 팝업 감지: {pattern}")
-                    
-                    # 팝업 닫기 처리 (test_b_store_ui_2.py 방식)
-                    close_buttons = ['text=OK', 'text="OK"', 'text=확인', 'text="확인"']
-                    for close_button_selector in close_buttons:
-                        close_button = self.page.locator(close_button_selector)
-                        if await close_button.count() > 0:
-                            await close_button.click()
-                            await self.page.wait_for_timeout(1000)
-                            self.logger.log_info("[성공] 검색 결과 없음 팝업 닫기 완료")
-                            break
-                    
-                    # 텔레그램 알림 전송
-                    await self._send_no_vehicle_notification(car_number)
-                    
-                    self.logger.log_error(ErrorCode.NO_VEHICLE, "차량검색", f"차량번호 {car_number} 검색 결과 없음")
-                    return False
+            # 공통 차량 검색 실패 감지 로직 사용
+            if await self.check_no_vehicle_found(self.page, car_number):
+                self.logger.log_error(ErrorCode.NO_VEHICLE, "차량검색", f"차량번호 {car_number} 검색 결과 없음")
+                return False
             
             # 검색 성공 (팝업이 없으면 성공으로 간주)
             self.logger.log_info(f"[성공] 차량번호 '{car_number}' 검색 성공")
@@ -354,21 +332,6 @@ class EStoreCrawler(BaseCrawler, StoreRepository):
                 return True
         return False
 
-    async def _send_no_vehicle_notification(self, car_number: str):
-        """차량 검색 결과 없음 텔레그램 알림"""
-        try:
-            if self.notification_service:
-                message = f"차량 검색 실패 알림\n\n매장: {self.store_id}\n차량번호: {car_number}\n상태: 검색된 차량이 없습니다"
-                await self.notification_service.send_success_notification(
-                    message=message, 
-                    store_id=self.store_id
-                )
-                self.logger.log_info("[성공] 차량 검색 실패 텔레그램 알림 전송 완료")
-            else:
-                self.logger.log_warning("[경고] 텔레그램 알림 서비스가 설정되지 않음")
-                
-        except Exception as e:
-            self.logger.log_error(ErrorCode.FAIL_NOTIFICATION, "텔레그램알림", f"텔레그램 알림 전송 중 오류: {str(e)}")
 
     async def cleanup(self) -> None:
         """리소스 정리 - StoreRepository 인터페이스 구현"""

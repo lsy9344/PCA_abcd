@@ -82,14 +82,9 @@ class CStoreCrawler(BaseCrawler, StoreRepository):
             # 검색 결과 로딩 대기
             await self.page.wait_for_timeout(3000)
             
-            # 검색 결과 없음 팝업 확인 (UI 테스트와 동일한 로직)
-            no_result_message = 'text=검색된 차량이 없습니다'
-            if await self.page.locator(no_result_message).count() > 0:
-                # 텔레그램 알림 전송
-                await self._send_no_vehicle_notification(car_number)
+            # 공통 차량 검색 실패 감지 로직 사용
+            if await self.check_no_vehicle_found(self.page, car_number):
                 self.logger.log_error(ErrorCode.NO_VEHICLE, "차량검색", f"차량번호 {car_number} 검색 결과 없음")
-                # 팝업 닫기
-                await self._handle_no_result_popup()
                 return False
             
             # 검색된 차량을 테이블에서 클릭
@@ -269,20 +264,7 @@ class CStoreCrawler(BaseCrawler, StoreRepository):
         except Exception as e:
             self.logger.log_info(f"[정보] 처리할 팝업이 없음: {str(e)}")
 
-    async def _handle_no_result_popup(self):
-        """검색 결과 없음 팝업 처리"""
-        try:
-            close_buttons = ['text=OK', 'text=확인', '.popup-ok', '.close-btn']
-            for selector in close_buttons:
-                close_button = self.page.locator(selector)
-                if await close_button.count() > 0:
-                    await close_button.first.click()
-                    await self.page.wait_for_timeout(1000)
-                    self.logger.log_info("[성공] 검색 결과 없음 팝업 닫기 완료")
-                    break
-        except Exception as e:
-            self.logger.log_warning(f"[경고] 팝업 닫기 실패: {str(e)}")
-
+    
 
     async def send_low_coupon_notification(self, coupon_name: str, coupon_count: int) -> None:
         """쿠폰 부족 텔레그램 알림"""
@@ -293,21 +275,6 @@ class CStoreCrawler(BaseCrawler, StoreRepository):
         else:
             self.logger.log_warning("[경고] 텔레그램 알림 서비스가 설정되지 않음")
 
-    async def _send_no_vehicle_notification(self, car_number: str):
-        """차량 검색 결과 없음 텔레그램 알림"""
-        try:
-            if self.notification_service:
-                message = f"차량 검색 실패 알림\n\n매장: {self.store_id}\n차량번호: {car_number}\n상태: 검색된 차량이 없습니다"
-                await self.notification_service.send_success_notification(
-                    message=message, 
-                    store_id=self.store_id
-                )
-                self.logger.log_info("[성공] 차량 검색 실패 텔레그램 알림 전송 완료")
-            else:
-                self.logger.log_warning("[경고] 텔레그램 알림 서비스가 설정되지 않음")
-                
-        except Exception as e:
-            self.logger.log_error(ErrorCode.FAIL_NOTIFICATION, "텔레그램알림", f"텔레그램 알림 전송 중 오류: {str(e)}")
 
     async def _parse_available_coupons(self, available_coupons: Dict):
         """보유 쿠폰 파싱 - 개선된 버전"""
