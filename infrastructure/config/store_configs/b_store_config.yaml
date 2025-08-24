@@ -48,10 +48,10 @@ selectors:
     ok_button: 'text=OK'  # line 177: 일반 OK 버튼
     modal_ok_button: '.modal-buttons a:has-text("OK")'  # line 319: 쿠폰 적용 후 모달 팝업
   
-  # 차량 검색 - 백업 크롤러에서 검증된 셀렉터
+  # 차량 검색 - 실제 HTML 구조에 맞게 업데이트
   search:
-    car_number_input: 'role=textbox[name="차량번호"]'  # line 67: get_by_role('textbox', name='차량번호')
-    search_button: 'role=button[name="검색"]'  # line 70: get_by_role('button', name='검색')
+    car_number_input: '#selCarNo'  # id="selCarNo" 실제 HTML 구조 기반
+    search_button: 'button.btnSl_1.btn'  # class="btnSl_1 btn" 실제 HTML 구조 기반
     no_result_message: 'text=검색 결과가 없습니다'  # line 78-79: 검색 결과 없음 패턴
     no_result_message2: 'text=검색된 차량이 없습니다'  # line 79: 추가 패턴
   

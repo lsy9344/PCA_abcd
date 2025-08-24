@@ -69,17 +69,19 @@ class BStoreCrawler(BaseCrawler, StoreRepository):
 
             car_number = vehicle.number
             
-            car_input = self.page.get_by_role('textbox', name='차량번호')
+            # HTML 구조에 맞는 셀렉터 사용
+            car_input = self.page.locator('#selCarNo')  # id="selCarNo" 사용
             await car_input.fill(car_number)
             self.logger.log_info(f"[성공] 차량번호 입력 완료: {car_number}")
             
-            search_button = self.page.get_by_role('button', name='검색')
+            # 검색 버튼도 실제 HTML 구조에 맞게 수정
+            search_button = self.page.locator('button.btnSl_1.btn')  # class 기반 셀렉터 사용
             if await search_button.count() == 0:
                 raise Exception("검색 버튼을 찾을 수 없음")
             
             await search_button.click()
             self.logger.log_info(f"[성공] 검색 버튼 클릭 완료")
-            await self.page.wait_for_timeout(2000)
+            await self.page.wait_for_timeout(5000)  # 대기 시간 증가 (2초 → 5초)
             
             
             # 공통 차량 검색 실패 감지 로직 사용 (설정 기반)
