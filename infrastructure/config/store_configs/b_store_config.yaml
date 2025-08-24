@@ -163,29 +163,23 @@ selectors:
 search_failure_detection:
   # 우선순위 순으로 시도할 감지 방법들
   methods:
-    - type: "text_pattern"           # B매장 주요 패턴
-      patterns: 
-        - "검색 결과가 없습니다. 출차된 차량은 검색되지 않습니다."
-        - "검색 결과가 없습니다"
-        - "검색된 차량이 없습니다"
-        - "차량을 찾을 수 없습니다"
-        - "등록된 차량이 없습니다"
-      priority: 1
-      
-    - type: "locator_check"          # Playwright 로케이터 직접 사용
+    - type: "locator_check"          # 정확한 로케이터 우선 사용
       locators:
         - 'text="검색 결과가 없습니다. 출차된 차량은 검색되지 않습니다."'
         - 'text="검색 결과가 없습니다"'
         - 'text="검색된 차량이 없습니다"'
-      priority: 2
+      priority: 1
       
-    - type: "popup_detection"        # 팝업창 감지
+    - type: "popup_detection"        # 팝업창 감지 (정확한 텍스트만)
       selectors:
         - ".modal"
         - ".popup"
         - "div[role='dialog']"
-      text_patterns: ["검색", "결과", "없음", "차량"]
-      priority: 3
+      text_patterns: 
+        - "검색 결과가 없습니다. 출차된 차량은 검색되지 않습니다."
+        - "검색 결과가 없습니다"
+        - "검색된 차량이 없습니다"
+      priority: 2
 
   # 팝업 닫기 설정
   popup_close:

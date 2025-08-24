@@ -123,19 +123,36 @@ class BStoreCrawler(BaseCrawler, StoreRepository):
                 if await search_button.is_enabled():
                     break
             
+            # B 매장 특화: 검색 성공 여부를 할인 내역 테이블 존재로 판단
+            # 할인 내역 테이블이 있으면 검색 성공, 없으면 검색 실패 판정 로직 실행
+            discount_table_exists = await self._check_discount_table_exists()
             
-            # 공통 차량 검색 실패 감지 로직 사용 (설정 기반)
-            if await self.check_no_vehicle_found_by_config(self.page, car_number):
-                self.logger.log_error(ErrorCode.NO_VEHICLE, "차량검색", f"차량번호 {car_number} 검색 결과 없음")
-                
-                # 차량 검색 실패 텔레그램 알림 전송
-                await self.send_search_failure_notification(car_number)
-                
-                return False
-            
-            # 검색 성공 (팝업이 없으면 성공으로 간주)
-            self.logger.log_info(f"[성공] 차량번호 '{car_number}' 검색 성공")
-            return True
+            if discount_table_exists:
+                # 검색 성공 (할인 내역 테이블 존재)
+                self.logger.log_info(f"[성공] 차량번호 '{car_number}' 검색 성공 - 할인 내역 테이블 확인됨")
+                return True
+            else:
+                # 할인 내역 테이블이 없으면 검색 실패 감지 로직 실행
+                if await self.check_no_vehicle_found_by_config(self.page, car_number):
+                    self.logger.log_error(ErrorCode.NO_VEHICLE, "차량검색", f"차량번호 {car_number} 검색 결과 없음")
+                    
+                    # 차량 검색 실패 텔레그램 알림 전송
+                    await self.send_search_failure_notification(car_number)
+                    
+                    return False
+                else:
+                    # 검색 실패 메시지도 없고 할인 테이블도 없는 경우 - 대기 후 재확인
+                    self.logger.log_info(f"[정보] 할인 테이블 로딩 중, 추가 대기 후 재확인")
+                    await self.page.wait_for_timeout(2000)  # 2초 추가 대기
+                    
+                    discount_table_exists = await self._check_discount_table_exists()
+                    if discount_table_exists:
+                        self.logger.log_info(f"[성공] 차량번호 '{car_number}' 검색 성공 - 할인 내역 테이블 확인됨 (지연 로딩)")
+                        return True
+                    else:
+                        # 여전히 테이블이 없으면 성공으로 간주 (빈 테이블일 수도 있음)
+                        self.logger.log_info(f"[성공] 차량번호 '{car_number}' 검색 성공 - 할인 내역 없음 (정상)")
+                        return True
             
         except Exception as e:
             self.logger.log_error(ErrorCode.FAIL_SEARCH, "차량검색", str(e))
@@ -387,6 +404,54 @@ class BStoreCrawler(BaseCrawler, StoreRepository):
             self.logger.log_warning("[경고] 알림 팝업을 찾지 못했지만 계속 진행")
             return True
 
+
+    async def _check_discount_table_exists(self) -> bool:
+        """할인 내역 테이블 존재 여부 확인 - 검색 성공 판단에 사용"""
+        try:
+            # YAML 설정에서 할인 테이블 셀렉터들 가져오기
+            import yaml
+            from pathlib import Path
+            
+            config_path = Path("infrastructure/config/store_configs/b_store_config.yaml")
+            with open(config_path, 'r', encoding='utf-8') as f:
+                store_config = yaml.safe_load(f)
+            
+            discount_selectors = store_config['selectors']['coupons']['discount_selectors']
+            
+            # 각 셀렉터로 테이블 확인
+            for selector in discount_selectors:
+                try:
+                    elements = self.page.locator(selector)
+                    count = await elements.count()
+                    if count > 0:
+                        self.logger.log_info(f"[정보] 할인 내역 테이블 발견: {selector} ({count}개 행)")
+                        return True
+                except Exception as e:
+                    continue
+                    
+            # 추가적으로 할인 관련 요소들 확인
+            coupon_elements = [
+                'a:has-text("무료 1시간할인")',
+                'a:has-text("유료 30분할인")', 
+                'text="남은잔여량"',
+                '#gridDtl'  # 할인 내역 그리드
+            ]
+            
+            for selector in coupon_elements:
+                try:
+                    elements = self.page.locator(selector)
+                    if await elements.count() > 0:
+                        self.logger.log_info(f"[정보] 쿠폰 관련 요소 발견: {selector}")
+                        return True
+                except Exception:
+                    continue
+                    
+            self.logger.log_info("[정보] 할인 내역 테이블/요소를 찾을 수 없음")
+            return False
+            
+        except Exception as e:
+            self.logger.log_warning(f"[경고] 할인 테이블 존재 여부 확인 중 오류: {str(e)}")
+            return False  # 오류 시 False 반환하여 추가 확인 로직 실행
 
     async def _count_discount_rows(self, page: Page) -> int:
         """현재 할인내역 테이블의 행 수 계산"""
