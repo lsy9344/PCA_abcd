@@ -82,8 +82,8 @@ class BStoreCrawler(BaseCrawler, StoreRepository):
             await self.page.wait_for_timeout(2000)
             
             
-            # 공통 차량 검색 실패 감지 로직 사용
-            if await self.check_no_vehicle_found(self.page, car_number):
+            # 공통 차량 검색 실패 감지 로직 사용 (설정 기반)
+            if await self.check_no_vehicle_found_by_config(self.page, car_number):
                 self.logger.log_error(ErrorCode.NO_VEHICLE, "차량검색", f"차량번호 {car_number} 검색 결과 없음")
                 return False
             
