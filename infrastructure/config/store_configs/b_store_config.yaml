@@ -48,10 +48,80 @@ selectors:
     ok_button: 'text=OK'  # line 177: 일반 OK 버튼
     modal_ok_button: '.modal-buttons a:has-text("OK")'  # line 319: 쿠폰 적용 후 모달 팝업
   
-  # 차량 검색 - 실제 HTML 구조에 맞게 업데이트
+  # 차량 검색 - 실제 HTML 구조 및 로직 구조 (스크린샷 2025-08-24 확인)
   search:
-    car_number_input: '#selCarNo'  # id="selCarNo" 실제 HTML 구조 기반
-    search_button: 'button.btnSl_1.btn'  # class="btnSl_1 btn" 실제 HTML 구조 기반
+    # 차량번호 입력 필드 HTML 구조
+    car_number_input:
+      primary_selector: '#schCarNo'           # id="schCarNo" (메인 셀렉터)
+      alternative_selectors:                  # 대체 셀렉터들 (우선순위 순)
+        - 'input[name="carNo"]'              # name="carNo"
+        - 'input.gInput'                     # class="gInput"
+        - 'input[placeholder="차량번호"]'     # placeholder 기반
+      html_attributes:
+        id: "schCarNo"
+        name: "carNo" 
+        class: "gInput"
+        type: "text"
+        placeholder: "차량번호"
+        style: "width: 100px;"
+        autocomplete: "off"
+        hasDatepicker: "true"
+        onkeypress: "javascript: if (event.keyCode == 13) {fncDoListMst();};"
+      
+    # 검색 버튼 HTML 구조 (input 태그 사용 - 스크린샷 2025-08-24 14:43 확인)
+    search_button:
+      primary_selector: 'input[type="button"].btnS1_1.btn'  # input type="button" class="btnS1_1 btn" (메인 셀렉터)
+      alternative_selectors:                  # 대체 셀렉터들 (우선순위 순)
+        - 'input[type="button"][value="검색"]'
+        - 'input.btnS1_1'
+        - '.btnS1_1.btn'
+        - 'input[onclick*="fncDoListMst"]'
+      html_attributes:
+        tag: "input"                          # button이 아니라 input 태그
+        type: "button"
+        class: "btnS1_1 btn"
+        value: "검색"
+        onclick: "javascript:fncDoListMst();" # 정확한 함수명
+      
+    # 검색 로직 구조
+    search_logic:
+      # 1단계: 입력 필드 준비 확인
+      input_preparation:
+        wait_for_visible: 10000              # 10초 대기
+        wait_for_attached: 5000              # 5초 대기
+        clear_before_input: true             # 입력 전 기존 값 클리어
+        clear_wait_time: 500                 # 클리어 후 대기 시간(ms)
+        
+      # 2단계: 차량번호 입력
+      input_process:
+        primary_method: "fill"               # 기본 입력 방법
+        fallback_method: "type"              # 실패 시 대체 방법
+        type_delay: 100                      # 타이핑 딜레이(ms)
+        verification_required: true          # 입력 후 검증 필요
+        retry_on_failure: true               # 실패 시 재시도
+        
+      # 3단계: 검색 버튼 클릭
+      button_click:
+        wait_for_visible: 10000              # 버튼 표시 대기
+        check_enabled: true                  # 활성화 상태 확인
+        disabled_wait_time: 2000             # 비활성화 시 대기 시간
+        post_click_wait: 2000                # 클릭 후 기본 대기
+        additional_wait_iterations: 6         # 추가 대기 반복 횟수
+        additional_wait_interval: 500        # 각 반복 간격(ms)
+        
+      # 4단계: 검색 결과 대기 및 확인
+      result_verification:
+        base_wait_time: 2000                 # 기본 결과 대기 시간
+        max_additional_wait: 3000            # 최대 추가 대기 시간
+        success_indicators:                  # 성공 지표들
+          - "할인내역이 표시됨"
+          - "쿠폰 적용 버튼들 표시됨"
+        failure_indicators:                  # 실패 지표들
+          - "검색 결과가 없습니다"
+          - "검색된 차량이 없습니다"
+          - "출차된 차량은 검색되지 않습니다"
+    
+    # 검색 실패 메시지 (기존 유지)
     no_result_message: 'text=검색 결과가 없습니다'  # line 78-79: 검색 결과 없음 패턴
     no_result_message2: 'text=검색된 차량이 없습니다'  # line 79: 추가 패턴
   
@@ -126,3 +196,8 @@ search_failure_detection:
       - 'button:has-text("OK")'
       - 'button:has-text("확인")'
       - '.btn-close'
+
+# 차량 검색 실패 알림 설정
+search_failure_notification:
+  enabled: true
+  message: "[B매장] 차량 검색 실패 알림\n\n차량번호: {vehicle_number}\n검색 결과: 등록된 차량이 없습니다\n\n※ 차량이 출차되었거나 번호를 다시 확인해주세요."

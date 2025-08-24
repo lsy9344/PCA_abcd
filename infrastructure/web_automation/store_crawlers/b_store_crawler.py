@@ -69,24 +69,68 @@ class BStoreCrawler(BaseCrawler, StoreRepository):
 
             car_number = vehicle.number
             
-            # HTML 구조에 맞는 셀렉터 사용
-            car_input = self.page.locator('#selCarNo')  # id="selCarNo" 사용
+            # HTML 구조에 맞는 셀렉터 사용 - 스크린샷 확인으로 정확한 셀렉터 적용
+            car_input = self.page.locator('#schCarNo')  # id="schCarNo" 사용 (실제 HTML 구조 기반)
+            
+            # 입력 필드가 준비될 때까지 기다림
+            await car_input.wait_for(state='visible', timeout=10000)
+            await car_input.wait_for(state='attached', timeout=5000)
+            
+            # 기존 값 클리어 후 새 값 입력
+            await car_input.clear()
+            await self.page.wait_for_timeout(500)  # 클리어 후 잠깐 대기
             await car_input.fill(car_number)
+            
+            # 입력 완료 확인
+            input_value = await car_input.input_value()
+            if input_value != car_number:
+                # 재시도 로직
+                await car_input.clear()
+                await self.page.wait_for_timeout(1000)
+                await car_input.type(car_number, delay=100)  # 천천히 타이핑
+                
+                # 최종 확인
+                final_value = await car_input.input_value()
+                if final_value != car_number:
+                    raise Exception(f"차량번호 입력 실패: 예상값='{car_number}', 실제값='{final_value}'")
+            
             self.logger.log_info(f"[성공] 차량번호 입력 완료: {car_number}")
             
-            # 검색 버튼도 실제 HTML 구조에 맞게 수정
-            search_button = self.page.locator('button.btnSl_1.btn')  # class 기반 셀렉터 사용
+            # 검색 버튼도 실제 HTML 구조에 맞게 수정 - input 태그 사용
+            search_button = self.page.locator('input[type="button"].btnS1_1.btn')  # input type="button" class="btnS1_1 btn"
+            
+            # 검색 버튼 준비 확인
+            await search_button.wait_for(state='visible', timeout=10000)
             if await search_button.count() == 0:
                 raise Exception("검색 버튼을 찾을 수 없음")
             
+            # 버튼 활성화 상태 확인
+            is_enabled = await search_button.is_enabled()
+            if not is_enabled:
+                self.logger.log_warning("[경고] 검색 버튼이 비활성화 상태, 잠시 대기 후 재시도")
+                await self.page.wait_for_timeout(2000)
+            
             await search_button.click()
             self.logger.log_info(f"[성공] 검색 버튼 클릭 완료")
-            await self.page.wait_for_timeout(5000)  # 대기 시간 증가 (2초 → 5초)
+            
+            # 검색 결과 로딩 대기 - 점진적으로 확인
+            await self.page.wait_for_timeout(2000)  # 기본 대기
+            
+            # 추가 로딩 확인 (최대 3초 더)
+            for i in range(6):  # 0.5초 * 6 = 3초
+                await self.page.wait_for_timeout(500)
+                # 로딩 스피너나 disabled 상태 확인 가능하면 여기서 체크
+                if await search_button.is_enabled():
+                    break
             
             
             # 공통 차량 검색 실패 감지 로직 사용 (설정 기반)
             if await self.check_no_vehicle_found_by_config(self.page, car_number):
                 self.logger.log_error(ErrorCode.NO_VEHICLE, "차량검색", f"차량번호 {car_number} 검색 결과 없음")
+                
+                # 차량 검색 실패 텔레그램 알림 전송
+                await self.send_search_failure_notification(car_number)
+                
                 return False
             
             # 검색 성공 (팝업이 없으면 성공으로 간주)
@@ -239,6 +283,33 @@ class BStoreCrawler(BaseCrawler, StoreRepository):
             message = f"[호매실(b)매장] 쿠폰 충전 필요 알림\n\n현재 쿠폰: {coupon_count}개\n남은 금액: {remaining_amount:,}원"
             await self.notification_service.send_success_notification(message=message, store_id=self.store_id)
             self.logger.log_info("[성공] 쿠폰 부족 텔레그램 알림 전송 완료")
+        else:
+            self.logger.log_warning("[경고] 텔레그램 알림 서비스가 설정되지 않음")
+
+    async def send_search_failure_notification(self, vehicle_number: str) -> None:
+        """차량 검색 실패 텔레그램 알림"""
+        if self.notification_service:
+            try:
+                import yaml
+                from pathlib import Path
+                
+                config_path = Path("infrastructure/config/store_configs/b_store_config.yaml")
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    store_config = yaml.safe_load(f)
+                
+                notification_config = store_config.get('search_failure_notification', {})
+                if notification_config.get('enabled', True):
+                    message_template = notification_config.get('message', 
+                        "[B매장] 차량 검색 실패 알림\n\n차량번호: {vehicle_number}\n검색 결과: 등록된 차량이 없습니다\n\n※ 차량이 출차되었거나 번호를 다시 확인해주세요.")
+                    
+                    message = message_template.format(vehicle_number=vehicle_number)
+                    await self.notification_service.send_success_notification(message=message, store_id=self.store_id)
+                    self.logger.log_info(f"[성공] 차량 검색 실패 텔레그램 알림 전송 완료: {vehicle_number}")
+                else:
+                    self.logger.log_info("[정보] 차량 검색 실패 알림이 비활성화됨")
+                    
+            except Exception as e:
+                self.logger.log_warning(f"[경고] 차량 검색 실패 알림 전송 중 오류: {str(e)}")
         else:
             self.logger.log_warning("[경고] 텔레그램 알림 서비스가 설정되지 않음")
 
