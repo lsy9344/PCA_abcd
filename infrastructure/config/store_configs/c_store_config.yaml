@@ -4,6 +4,11 @@ store:
   name: "C매장"
   website_url: "http://g048.gparking.kr"
 
+# 크롤러에서 사용하는 속성명과 일치
+login_username: "1024"
+login_password: "1211"
+
+# 기존 형태도 호환성을 위해 유지
 login:
   username: "1024"
   password: "1211"
@@ -18,11 +23,16 @@ coupons:
     type: "FREE"  # 대문자 표준화
     duration_minutes: 120
     priority: 0
+  FREE_1HOUR:
+    name: "1시간 무료할인권"
+    type: "FREE"
+    duration_minutes: 60
+    priority: 1
   PAID_1HOUR:
     name: "1시간 유료할인권"
     type: "PAID"  # 대문자 표준화
     duration_minutes: 60
-    priority: 1
+    priority: 2
 
 # 할인 정책 (분 단위로 표준화)
 discount_policy:
@@ -47,8 +57,11 @@ selectors:
     notice_popup: ".popup"
     ok_button: ".popup-ok"
     close_button: ".popup-close"
-    # 할인권적용 팝업 (쿠폰 적용 후 발생)
+    # 할인권적용 팝업 (쿠폰 적용 후 발생) - 크롤러 코드와 일치하도록 수정
     discount_apply_popup:
+      - '.modal-buttons a:has-text("OK")'
+      - '*:has-text("할인권적용") + * a'
+      - '*:has-text("할인권적용") ~ * a'
       - 'a:has-text("닫기")'
       - 'button:has-text("닫기")'
       - 'text=닫기'
@@ -58,7 +71,14 @@ selectors:
   # 차량 검색
   search:
     car_number_input: "input[placeholder='차량번호 2자리 이상을 입력하세요']"
-    search_button: ".btn:has-text('차량조회')"
+    # 크롤러에서 사용하는 다양한 셀렉터 추가
+    search_button: "#searchBtn"  # 크롤러 우선 사용 셀렉터
+    search_button_fallbacks:
+      - ".btn:has-text('차량조회')"
+      - "input[value='차량조회']"
+      - "button:has-text('차량조회')"
+      - "input[type='button']:has-text('차량조회')"
+      - ".search-btn"
     no_result_message: 'text=검색된 차량이 없습니다'
     search_result_table: "#tableID"  # 스크린샷에서 확인된 실제 테이블 ID (camelCase)
     vehicle_click_selector: "td:has-text('{car_number}')"  # 차량번호 클릭 셀렉터

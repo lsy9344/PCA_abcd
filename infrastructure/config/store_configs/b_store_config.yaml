@@ -7,6 +7,8 @@ store:
 login:
   username: "215"
   password: "4318"
+  login_username: "215"  # 크롤러에서 사용하는 필드명
+  login_password: "4318"  # 크롤러에서 사용하는 필드명
 
 # 쿠폰 설정 - 시간 독립적 설계 (4_discount_logic.mdc 기반)
 # B 매장 특징: 30분 단위 유료 쿠폰, 주말 전용 쿠폰 없음 (PAID로 fallback)
@@ -83,7 +85,7 @@ selectors:
         value: "검색"
         onclick: "javascript:fncDoListMst();" # 정확한 함수명
       
-    # 검색 로직 구조
+    # 검색 로직 구조 (크롤러 search_vehicle 메서드와 매칭)
     search_logic:
       # 1단계: 입력 필드 준비 확인
       input_preparation:
@@ -121,9 +123,9 @@ selectors:
           - "검색된 차량이 없습니다"
           - "출차된 차량은 검색되지 않습니다"
     
-    # 검색 실패 메시지 (기존 유지)
-    no_result_message: 'text=검색 결과가 없습니다'  # line 78-79: 검색 결과 없음 패턴
-    no_result_message2: 'text=검색된 차량이 없습니다'  # line 79: 추가 패턴
+    # 검색 실패 메시지 (크롤러에서는 check_no_vehicle_found_by_config 메서드로 처리)
+    no_result_message: 'text=검색 결과가 없습니다'  # 크롤러 line 136에서 참조
+    no_result_message2: 'text=검색된 차량이 없습니다'  # 크롤러 line 136에서 참조
   
   # 쿠폰 관련 - 백업 크롤러에서 검증된 셀렉터
   coupons:
@@ -131,19 +133,20 @@ selectors:
     paid_30min_link: 'a:has-text("유료 30분할인")'  # line 293: 유료 30분할인 링크
     remaining_amount: 'text=남은잔여량'  # line 223: 남은잔여량 텍스트
     
-    # 할인내역 테이블 셀렉터 (2025-08-16 파싱 문제 해결로 업데이트)
+    # 할인내역 테이블 셀렉터 (크롤러 line 459에서 사용)
     # 우선순위 순으로 시도 - 공통 쿠폰 계산기에서 사용
     discount_selectors:
-      - "tr.ev_dhx_skyblue"     # B 매장 기본 행 (짝수)
-      - "tr.odd_dhx_skyblue"    # B 매장 홀수 행  
+      - "tr.ev_dhx_skyblue"     # B 매장 기본 행 (짝수) - 크롤러 line 459에서 사용
+      - "tr.odd_dhx_skyblue"    # B 매장 홀수 행 - 크롤러 line 459에서 사용
       - "tr.rowselected"        # 선택된 행
-      - "#gridDtl tr"           # 할인내역 그리드 내 행
+      - "#gridDtl tr"           # 할인내역 그리드 내 행 - 크롤러 line 437에서 확인
       - ".gridbox tr"           # 그리드박스 내 행
     
-    # 쿠폰 이름 → 키 매핑 (공통 쿠폰 계산기용)
+    # 쿠폰 이름 → 키 매핑 (공통 쿠폰 계산기용 - 크롤러 line 256에서 사용)
     coupon_key_mapping:
-      "무료 1시간할인": "FREE_COUPON"
-      "유료 30분할인": "PAID_COUPON"
+      "무료 1시간할인": "FREE_COUPON"     # 크롤러 line 213에서 매핑
+      "유료 30분할인": "PAID_COUPON"     # 크롤러 line 216에서 매핑
+      "유료 30분할인 (판매 : 300 )": "PAID_COUPON"  # 크롤러 line 353에서 사용하는 전체 이름
     
     # B 매장 테이블 데이터 구조 정보
     table_structure:
@@ -159,7 +162,23 @@ selectors:
     discount_status: "/state/doViewMst"
     discount_purchase: "/pay/doViewDscnt"
 
-# 차량 검색 실패 감지 설정
+# 쿠폰 적용 설정 (크롤러 apply_coupons 메서드와 매칭)
+coupon_application:
+  # 크롤러 line 213-216에서 사용하는 쿠폰 타입 매핑
+  type_mapping:
+    "무료": "FREE_1HOUR"    # 크롤러 line 214에서 매핑
+    "FREE_COUPON": "FREE_1HOUR"  # 크롤러 line 214에서 매핑
+    "FREE_1HOUR": "FREE_1HOUR"   # 크롤러 line 214에서 매핑
+    "유료": "PAID_30MIN"    # 크롤러 line 216에서 매핑
+    "PAID_COUPON": "PAID_30MIN"  # 크롤러 line 216에서 매핑 
+    "PAID_30MIN": "PAID_30MIN"   # 크롤러 line 216에서 매핑
+  
+  # 크롤러 line 371에서 사용하는 링크 텍스트
+  link_text_mapping:
+    "FREE_1HOUR": "무료 1시간할인"  # 크롤러 line 371에서 사용
+    "PAID_30MIN": "유료 30분할인"     # 크롤러 line 371에서 사용
+
+# 차량 검색 실패 감지 설정 (크롤러 line 136에서 check_no_vehicle_found_by_config 호출)
 search_failure_detection:
   # 우선순위 순으로 시도할 감지 방법들
   methods:
@@ -191,7 +210,31 @@ search_failure_detection:
       - 'button:has-text("확인")'
       - '.btn-close'
 
-# 차량 검색 실패 알림 설정
+# 차량 검색 실패 알림 설정 (크롤러 line 317-324에서 사용)
 search_failure_notification:
-  enabled: true
-  message: "[B매장] 차량 검색 실패 알림\n\n차량번호: {vehicle_number}\n검색 결과: 등록된 차량이 없습니다\n\n※ 차량이 출차되었거나 번호를 다시 확인해주세요."
+  enabled: true  # 크롤러 line 318에서 확인
+  message: "[B매장] 차량 검색 실패 알림\n\n차량번호: {vehicle_number}\n검색 결과: 등록된 차량이 없습니다\n\n※ 차량이 출차되었거나 번호를 다시 확인해주세요."  # 크롤러 line 319-321에서 사용
+
+# 크롤러 동작 설정
+crawler_settings:
+  # 크롤러 line 24에서 사용하는 로거 설정
+  logger:
+    name: "b_store_crawler"
+    store_id: "B"
+  
+  # 크롤러 line 298-304에서 사용하는 알림 설정
+  notification:
+    low_coupon_threshold: 50  # 크롤러 line 356에서 사용
+    low_coupon_message_template: "[호매실(b)매장] 쿠폰 충전 필요 알림\n\n현재 쿠폰: {coupon_count}개\n남은 금액: {remaining_amount:,}원"  # 크롤러 line 300에서 사용
+  
+  # 크롤러 line 347-362에서 사용하는 유료 쿠폰 계산 설정
+  paid_coupon:
+    price_per_coupon: 300  # 크롤러 line 352에서 사용 (amount // 300)
+    coupon_name: "유료 30분할인 (판매 : 300 )"  # 크롤러 line 353에서 사용
+  
+  # 크롤러 line 128에서 사용하는 검색 성공 판단 설정
+  search_verification:
+    method: "discount_table_exists"  # 크롤러 line 128에서 사용
+    success_message: "차량번호 '{car_number}' 검색 성공 - 할인 내역 테이블 확인됨"  # 크롤러 line 132에서 사용
+    success_message_delayed: "차량번호 '{car_number}' 검색 성공 - 할인 내역 테이블 확인됨 (지연 로딩)"  # 크롤러 line 150에서 사용
+    success_message_empty: "차량번호 '{car_number}' 검색 성공 - 할인 내역 없음 (정상)"  # 크롤러 line 154에서 사용

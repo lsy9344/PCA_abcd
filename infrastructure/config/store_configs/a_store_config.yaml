@@ -8,6 +8,17 @@ login:
   username: "dtctrit2704"
   password: "dtctrit2704"
 
+# 크롤러에서 사용하는 속성명 (하위 호환성)
+login_username: "dtctrit2704"
+login_password: "dtctrit2704"
+website_url: "http://members.iparking.co.kr/#!"
+
+# 할인 타입 매핑 (크롤러에서 사용)
+discount_types:
+  "FREE": "30분할인권(무료)"
+  "PAID": "1시간할인권(유료)"
+  "WEEKEND": "1시간주말할인권(유료)"
+
 # 쿠폰 설정 - 시간 독립적 설계 (4_discount_logic.mdc 기반)
 coupons:
   FREE_COUPON:
@@ -89,13 +100,25 @@ selectors:
       "1시간할인권(유료)": "PAID_COUPON"
       "1시간주말할인권(유료)": "WEEKEND_COUPON"
     
-    # A 매장 테이블 데이터 구조 정보
+    # A 매장 테이블 데이터 구조 정보 (크롤러 실제 구현 기준)
     table_structure:
-      description: "날짜 | 할인권명 | 수량"
-      coupon_name_cell_index: 2  # 쿠폰명이 있는 셀 인덱스 (0부터 시작)
-      quantity_cell_index: 3     # 수량이 있는 셀 인덱스
+      # my_history 테이블: [할인권명, 수량, 취소버튼]
+      my_history:
+        description: "할인권명 | 수량 | 취소버튼"
+        coupon_name_cell_index: 0  # 할인권명이 0번째 셀
+        quantity_cell_index: 1     # 수량이 1번째 셀
+        has_cancel_button: true
+        example: "30분할인권(무료) | 1 | [취소]"
+      
+      # total_history 테이블: [할인권명, 수량]
+      total_history:
+        description: "할인권명 | 수량"
+        coupon_name_cell_index: 0  # 할인권명이 0번째 셀
+        quantity_cell_index: 1     # 수량이 1번째 셀
+        has_cancel_button: false
+        example: "30분할인권(무료) | 1"
+      
       has_my_history: true       # A 매장은 my_history와 total_history 구분
-      example: "2025-08-16 | 30분할인권(무료) | 1매"
 
 # 차량 검색 실패 감지 설정
 search_failure_detection:

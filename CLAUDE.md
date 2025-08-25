@@ -1,5 +1,8 @@
 # Development Partnership
 
+## At the end of each session, write a description of all the work done in that session, including the rationale, any mistakes, and major revisions, in the DONE.md file.
+Do not overwrite the file; continue writing in the same file.
+
 Talk to me in Korean.
 
 We're building production-quality code together. Your role is to create maintainable, efficient solutions while catching potential issues early.
