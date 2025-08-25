@@ -102,14 +102,17 @@ class CStoreCrawler(BaseCrawler, StoreRepository):
     async def get_coupon_history(self, vehicle: Vehicle) -> CouponHistory:
         """쿠폰 이력 조회"""
         try:
-            my_history = {}
-            total_history = {}
-            available_coupons = {}
-            
             # 페이지 안전성 검사
             if not await self._safe_page_check():
                 self.logger.log_warning("페이지 상태 불안정 - 빈 이력 반환")
                 return self._empty_coupon_history(vehicle.number)
+            
+            # 1단계: 현재 적용된 쿠폰 파싱 (CommonCouponCalculator 사용)
+            my_history, total_history = await self._parse_current_applied_coupons()
+            self.logger.log_info(f"[쿠폰] C 매장 쿠폰 이력: 우리 매장 {len(my_history)}건, 전체 {len(total_history)}건")
+            
+            # 2단계: 보유 쿠폰 파싱
+            available_coupons = {}
             
             # 기본 쿠폰 정보 설정 (YAML 파일에서 직접 로드)
             try:
@@ -129,8 +132,7 @@ class CStoreCrawler(BaseCrawler, StoreRepository):
                 self.logger.log_error(ErrorCode.FAIL_PARSE, "쿠폰설정", f"쿠폰 설정 로드 실패: {str(config_e)}")
                 raise
             
-            # C 매장은 my_history가 없음 (설정 파일 기준)
-            my_history = {}
+            # C 매장 특성: my_history는 CommonCouponCalculator에서 처리됨 (has_my_history=False)
             
             # 쿠폰 리스트 파싱
             try:
@@ -138,11 +140,16 @@ class CStoreCrawler(BaseCrawler, StoreRepository):
             except Exception as parse_e:
                 self.logger.log_error(ErrorCode.FAIL_PARSE, "사용가능쿠폰", f"사용 가능 쿠폰 파싱 실패: {str(parse_e)}")
             
-            # 사용 이력 파싱 (C 매장 전용 로직)
+            # 3단계: 기존 C 매장 전용 이력 파싱 로직 (보완용)
             try:
-                await self._parse_coupon_history_c_store(total_history)
+                backup_total_history = {}
+                await self._parse_coupon_history_c_store(backup_total_history)
+                # 기존 파싱이 실패했을 경우에만 백업 사용
+                if not total_history and backup_total_history:
+                    total_history.update(backup_total_history)
+                    self.logger.log_info("[백업] C 매장 전용 파싱 로직 사용")
             except Exception as history_e:
-                self.logger.log_error(ErrorCode.FAIL_PARSE, "쿠폰이력", f"쿠폰 이력 파싱 실패: {str(history_e)}")
+                self.logger.log_error(ErrorCode.FAIL_PARSE, "쿠폰이력", f"백업 쿠폰 이력 파싱 실패: {str(history_e)}")
             
             return CouponHistory(
                 store_id=self.store_id,
@@ -964,6 +971,27 @@ class CStoreCrawler(BaseCrawler, StoreRepository):
         except Exception as e:
             self.logger.log_warning(f"[경고] 팝업 처리 중 오류: {str(e)}")
             return True  # 오류가 있어도 일단 성공으로 간주
+
+    async def _parse_current_applied_coupons(self):
+        """통합 쿠폰 파싱 로직 사용 - YAML 설정 파일 기반"""
+        from shared.utils.common_coupon_calculator import CommonCouponCalculator
+        import yaml
+        from pathlib import Path
+        
+        # YAML 설정 파일에서 직접 로드
+        config_path = Path("infrastructure/config/store_configs/c_store_config.yaml")
+        with open(config_path, 'r', encoding='utf-8') as f:
+            store_config = yaml.safe_load(f)
+        
+        # 쿠폰 설정 추출
+        coupon_config = store_config['selectors']['coupons']
+        
+        return await CommonCouponCalculator.parse_applied_coupons(
+            self.page,
+            coupon_config["coupon_key_mapping"],
+            coupon_config["discount_selectors"],
+            has_my_history=False  # C 매장은 my_history 사용 안함
+        )
 
     async def cleanup(self) -> None:
         """리소스 정리"""
