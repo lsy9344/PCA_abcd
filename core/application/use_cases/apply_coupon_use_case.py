@@ -76,7 +76,16 @@ class ApplyCouponUseCase:
             # 6. 사용 가능한 쿠폰 개수 계산
             available_coupons = {}
             for coupon_name in discount_info:
-                available_coupons[coupon_name] = discount_info[coupon_name].get('car', 0)
+                coupon_data = discount_info[coupon_name]
+                # 데이터가 딕셔너리인 경우 (예: B, D 매장)
+                if isinstance(coupon_data, dict):
+                    available_coupons[coupon_name] = coupon_data.get('car', 0)
+                # 데이터가 정수인 경우 (예: C 매장)
+                elif isinstance(coupon_data, int):
+                    available_coupons[coupon_name] = coupon_data
+                else:
+                    # 기타 타입은 0으로 설정
+                    available_coupons[coupon_name] = 0
 
             # 7. 이력 키 변환: coupon_name → coupon_key (할인 계산기 호환)
             my_history_by_key = self._convert_history_keys(
