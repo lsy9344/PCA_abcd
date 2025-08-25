@@ -126,8 +126,8 @@ class CStoreCrawler(BaseCrawler, StoreRepository):
                 
                 coupon_configs = config.get('coupons', {})
                 for _, coupon_info in coupon_configs.items():
-                    # 기본값을 정수로 설정 (할인 계산 로직과 호환)
-                    available_coupons[coupon_info['name']] = 100
+                    # C 매장 특성: 쿠폰 수량이 표시되지 않으므로 999개로 고정
+                    available_coupons[coupon_info['name']] = 999
             except Exception as config_e:
                 self.logger.log_error(ErrorCode.FAIL_PARSE, "쿠폰설정", f"쿠폰 설정 로드 실패: {str(config_e)}")
                 raise
@@ -300,21 +300,12 @@ class CStoreCrawler(BaseCrawler, StoreRepository):
                     text = row_info['text']
                     self.logger.log_info(f"[디버그] 쿠폰 파싱 행 {i+1}: {text[:100]}...")
                     
-                    # 쿠폰 이름과 수량 파싱
+                    # 쿠폰 이름과 수량 파싱 - C 매장은 수량이 표시되지 않아 999개로 고정
                     for coupon_name in available_coupons.keys():
                         if coupon_name in text:
-                            # 수량 추출 로직 - 다양한 패턴 시도
-                            count = self._extract_coupon_count(text)
-                            if count is not None:
-                                available_coupons[coupon_name] = count
-                                self.logger.log_info(f"[발견] {coupon_name}: {count}개")
-                                
-                                # 쿠폰 부족 알림
-                                if count <= 50 and count > 0:
-                                    self.logger.log_warning(f"[경고] C 매장 {coupon_name} 쿠폰 부족: {count}개")
-                                    asyncio.create_task(self.send_low_coupon_notification(coupon_name, count))
-                            else:
-                                self.logger.log_warning(f"[경고] {coupon_name} 수량 파싱 실패: {text}")
+                            # C 매장 특성: 쿠폰 수량이 표시되지 않으므로 999개로 고정
+                            available_coupons[coupon_name] = 999
+                            self.logger.log_info(f"[발견] {coupon_name}: 999개 (C 매장 고정값)")
                             break
                 except Exception as row_e:
                     self.logger.log_warning(f"[경고] 쿠폰 행 파싱 중 오류: {str(row_e)}")
